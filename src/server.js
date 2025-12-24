@@ -250,13 +250,15 @@ app.post('/v1/messages', async (req, res) => {
         console.log(`[API] Request for model: ${request.model}, stream: ${!!stream}`);
 
         // Debug: Log message structure to diagnose tool_use/tool_result ordering
-        console.log('[API] Message structure:');
-        messages.forEach((msg, i) => {
-            const contentTypes = Array.isArray(msg.content)
-                ? msg.content.map(c => c.type || 'text').join(', ')
-                : (typeof msg.content === 'string' ? 'text' : 'unknown');
-            console.log(`  [${i}] ${msg.role}: ${contentTypes}`);
-        });
+        if (process.env.DEBUG) {
+            console.log('[API] Message structure:');
+            messages.forEach((msg, i) => {
+                const contentTypes = Array.isArray(msg.content)
+                    ? msg.content.map(c => c.type || 'text').join(', ')
+                    : (typeof msg.content === 'string' ? 'text' : 'unknown');
+                console.log(`  [${i}] ${msg.role}: ${contentTypes}`);
+            });
+        }
 
         if (stream) {
             // Handle streaming response
