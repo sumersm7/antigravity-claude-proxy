@@ -431,6 +431,8 @@ async function main() {
         }
     } finally {
         rl.close();
+        // Force exit to prevent hanging
+        process.exit(0);
     }
 }
 
