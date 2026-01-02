@@ -13,8 +13,8 @@ import {
     ANTIGRAVITY_HEADERS,
     OAUTH_CONFIG,
     OAUTH_REDIRECT_URI
-} from './constants.js';
-import { logger } from './utils/logger.js';
+} from '../constants.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Generate PKCE code verifier and challenge

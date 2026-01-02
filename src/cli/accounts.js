@@ -7,10 +7,10 @@
  * for the Antigravity Claude Proxy.
  *
  * Usage:
- *   node src/accounts-cli.js          # Interactive mode
- *   node src/accounts-cli.js add      # Add new account(s)
- *   node src/accounts-cli.js list     # List all accounts
- *   node src/accounts-cli.js clear    # Remove all accounts
+ *   node src/cli/accounts.js          # Interactive mode
+ *   node src/cli/accounts.js add      # Add new account(s)
+ *   node src/cli/accounts.js list     # List all accounts
+ *   node src/cli/accounts.js clear    # Remove all accounts
  */
 
 import { createInterface } from 'readline/promises';
@@ -19,14 +19,14 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import { exec } from 'child_process';
 import net from 'net';
-import { ACCOUNT_CONFIG_PATH, DEFAULT_PORT, MAX_ACCOUNTS } from './constants.js';
+import { ACCOUNT_CONFIG_PATH, DEFAULT_PORT, MAX_ACCOUNTS } from '../constants.js';
 import {
     getAuthorizationUrl,
     startCallbackServer,
     completeOAuthFlow,
     refreshAccessToken,
     getUserEmail
-} from './oauth.js';
+} from '../auth/oauth.js';
 
 const SERVER_PORT = process.env.PORT || DEFAULT_PORT;
 
@@ -415,11 +415,11 @@ async function main() {
                 break;
             case 'help':
                 console.log('\nUsage:');
-                console.log('  node src/accounts-cli.js add     Add new account(s)');
-                console.log('  node src/accounts-cli.js list    List all accounts');
-                console.log('  node src/accounts-cli.js verify  Verify account tokens');
-                console.log('  node src/accounts-cli.js clear   Remove all accounts');
-                console.log('  node src/accounts-cli.js help    Show this help');
+                console.log('  node src/cli/accounts.js add     Add new account(s)');
+                console.log('  node src/cli/accounts.js list    List all accounts');
+                console.log('  node src/cli/accounts.js verify  Verify account tokens');
+                console.log('  node src/cli/accounts.js clear   Remove all accounts');
+                console.log('  node src/cli/accounts.js help    Show this help');
                 break;
             case 'remove':
                 await ensureServerStopped();

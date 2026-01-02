@@ -9,9 +9,9 @@
 import {
     TOKEN_REFRESH_INTERVAL_MS,
     ANTIGRAVITY_AUTH_PORT
-} from './constants.js';
-import { getAuthStatus } from './db/database.js';
-import { logger } from './utils/logger.js';
+} from '../constants.js';
+import { getAuthStatus } from './database.js';
+import { logger } from '../utils/logger.js';
 
 // Cache for the extracted token
 let cachedToken = null;

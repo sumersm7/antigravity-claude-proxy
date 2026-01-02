@@ -29,28 +29,35 @@ const CONFIG_DIR = path.join(HOME_DIR, '.antigravity-claude-proxy');
 app.listen(PORT, () => {
     // Clear console for a clean start
     console.clear();
-    
+
     logger.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║           Antigravity Claude Proxy Server                    ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  Server running at: http://localhost:${PORT}                   ║
+║  Server running at: http://localhost:${PORT}                 ║
+║                                                              ║
+║  Control:                                                    ║
+║    --debug            Enable debug logging                   ║
+║    Ctrl+C             Stop server                            ║
 ║                                                              ║
 ║  Control:                                                    ║
 ║    --debug            Enable debug logging                   ║
 ║    Ctrl+C             Stop server                            ║
 ║                                                              ║
 ║  Endpoints:                                                  ║
-║    POST /v1/messages  - Anthropic Messages API               ║
-║    GET  /v1/models    - List available models                ║
-║    GET  /health       - Health check                         ║
+║    POST /v1/messages         - Anthropic Messages API        ║
+║    POST /openai/v1/chat...   - OpenAI Chat API               ║
+║    GET  /v1/models           - List available models         ║
+║    GET  /health              - Health check                  ║
+║    GET  /account-limits      - Account status & quotas       ║
+║    POST /refresh-token       - Force token refresh           ║
 ║                                                              ║
 ║  Configuration:                                              ║
-║    Storage: ${CONFIG_DIR}   
+║    Storage: ${CONFIG_DIR}                                    ║
 ║                                                              ║
 ║  Usage with Claude Code:                                     ║
-║    export ANTHROPIC_BASE_URL=http://localhost:${PORT}          ║
+║    export ANTHROPIC_BASE_URL=http://localhost:${PORT}        ║
 ║    export ANTHROPIC_API_KEY=dummy                            ║
 ║    claude                                                    ║
 ║                                                              ║

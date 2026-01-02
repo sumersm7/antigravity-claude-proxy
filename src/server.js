@@ -6,15 +6,15 @@
 
 import express from 'express';
 import cors from 'cors';
-import { sendMessage, sendMessageStream, listModels, getModelQuotas } from './cloudcode-client.js';
+import { sendMessage, sendMessageStream, listModels, getModelQuotas } from './cloudcode/index.js';
 import { 
     convertOpenAIToAnthropic, 
     convertAnthropicToOpenAI, 
     convertAnthropicStreamToOpenAI 
 } from './format/index.js';
-import { forceRefresh } from './token-extractor.js';
+import { forceRefresh } from './auth/token-extractor.js';
 import { REQUEST_BODY_LIMIT } from './constants.js';
-import { AccountManager } from './account-manager.js';
+import { AccountManager } from './account-manager/index.js';
 import { formatDuration } from './utils/helpers.js';
 import { logger } from './utils/logger.js';
 
@@ -491,6 +491,7 @@ app.post('/v1/messages', async (req, res) => {
     try {
         // Ensure account manager is initialized
         await ensureInitialized();
+
 
         const {
             model,

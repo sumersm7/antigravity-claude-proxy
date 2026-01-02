@@ -45,25 +45,64 @@ npm run test:caching       # Prompt caching
 Claude Code CLI → Express Server (server.js) → CloudCode Client → Antigravity Cloud Code API
 ```
 
+**Directory Structure:**
+
+```
+src/
+├── index.js                    # Entry point
+├── server.js                   # Express server
+├── constants.js                # Configuration values
+├── errors.js                   # Custom error classes
+│
+├── cloudcode/                  # Cloud Code API client
+│   ├── index.js                # Public API exports
+│   ├── session-manager.js      # Session ID derivation for caching
+│   ├── rate-limit-parser.js    # Parse reset times from headers/errors
+│   ├── request-builder.js      # Build API request payloads
+│   ├── sse-parser.js           # Parse SSE for non-streaming
+│   ├── sse-streamer.js         # Stream SSE events in real-time
+│   ├── message-handler.js      # Non-streaming message handling
+│   ├── streaming-handler.js    # Streaming message handling
+│   └── model-api.js            # Model listing and quota APIs
+│
+├── account-manager/            # Multi-account pool management
+│   ├── index.js                # AccountManager class facade
+│   ├── storage.js              # Config file I/O and persistence
+│   ├── selection.js            # Account picking (round-robin, sticky)
+│   ├── rate-limits.js          # Rate limit tracking and state
+│   └── credentials.js          # OAuth token and project handling
+│
+├── auth/                       # Authentication
+│   ├── oauth.js                # Google OAuth with PKCE
+│   ├── token-extractor.js      # Legacy token extraction from DB
+│   └── database.js             # SQLite database access
+│
+├── cli/                        # CLI tools
+│   └── accounts.js             # Account management CLI
+│
+├── format/                     # Format conversion (Anthropic ↔ Google)
+│   ├── index.js                # Re-exports all converters
+│   ├── request-converter.js    # Anthropic → Google conversion
+│   ├── response-converter.js   # Google → Anthropic conversion
+│   ├── content-converter.js    # Message content conversion
+│   ├── schema-sanitizer.js     # JSON Schema cleaning for Gemini
+│   ├── thinking-utils.js       # Thinking block validation/recovery
+│   └── signature-cache.js      # In-memory signature cache
+│
+└── utils/                      # Utilities
+    ├── helpers.js              # formatDuration, sleep
+    └── logger.js               # Structured logging
+```
+
 **Key Modules:**
 
 - **src/server.js**: Express server exposing Anthropic-compatible endpoints (`/v1/messages`, `/v1/models`, `/health`, `/account-limits`)
-- **src/cloudcode-client.js**: Makes requests to Antigravity Cloud Code API with retry/failover logic, handles both streaming and non-streaming
-- **src/format/**: Format conversion module (Anthropic ↔ Google Generative AI)
-  - `index.js` - Re-exports all converters
-  - `request-converter.js` - Anthropic → Google request conversion
-  - `response-converter.js` - Google → Anthropic response conversion
-  - `content-converter.js` - Message content and role conversion
-  - `schema-sanitizer.js` - JSON Schema cleaning for Gemini API compatibility (preserves constraints/enums as hints)
-  - `thinking-utils.js` - Thinking block validation, filtering, reordering, and recovery logic
-  - `signature-cache.js` - In-memory cache for Gemini thoughtSignatures
-- **src/account-manager.js**: Multi-account pool with sticky selection, rate limit handling, and automatic cooldown
-- **src/db/database.js**: Cross-platform SQLite database access using better-sqlite3 (Windows/Mac/Linux compatible)
-- **src/oauth.js**: Google OAuth implementation for adding accounts
-- **src/token-extractor.js**: Extracts tokens from local Antigravity app installation (legacy single-account mode)
+- **src/cloudcode/**: Cloud Code API client with retry/failover logic, streaming and non-streaming support
+- **src/account-manager/**: Multi-account pool with sticky selection, rate limit handling, and automatic cooldown
+- **src/auth/**: Authentication including Google OAuth, token extraction, and database access
+- **src/format/**: Format conversion between Anthropic and Google Generative AI formats
 - **src/constants.js**: API endpoints, model mappings, OAuth config, and all configuration values
-- **src/errors.js**: Custom error classes (`RateLimitError`, `AuthError`, `ApiError`, etc.) for structured error handling
-- **src/utils/helpers.js**: Shared utility functions (`formatDuration`, `sleep`)
+- **src/errors.js**: Custom error classes (`RateLimitError`, `AuthError`, `ApiError`, etc.)
 
 **Multi-Account Load Balancing:**
 - Sticky account selection for prompt caching (stays on same account across turns)
@@ -108,6 +147,15 @@ Claude Code CLI → Express Server (server.js) → CloudCode Client → Antigrav
 **Utilities:** Shared helpers in `src/utils/helpers.js`:
 - `formatDuration(ms)` - Format milliseconds as "1h23m45s"
 - `sleep(ms)` - Promise-based delay
+
+**Logger:** Structured logging via `src/utils/logger.js`:
+- `logger.info(msg)` - Standard info (blue)
+- `logger.success(msg)` - Success messages (green)
+- `logger.warn(msg)` - Warnings (yellow)
+- `logger.error(msg)` - Errors (red)
+- `logger.debug(msg)` - Debug output (magenta, only when enabled)
+- `logger.setDebug(true)` - Enable debug mode
+- `logger.isDebugEnabled` - Check if debug mode is on
 
 ## Maintenance
 
