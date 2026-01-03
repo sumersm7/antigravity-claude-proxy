@@ -17,6 +17,12 @@ npm install
 # Start server (runs on port 8080)
 npm start
 
+# Start with model fallback enabled (falls back to alternate model when quota exhausted)
+npm start -- --fallback
+
+# Start with debug logging
+npm start -- --debug
+
 # Start with file watching for development
 npm run dev
 
@@ -36,6 +42,7 @@ npm run test:streaming     # Streaming SSE events
 npm run test:interleaved   # Interleaved thinking
 npm run test:images        # Image processing
 npm run test:caching       # Prompt caching
+npm run test:crossmodel    # Cross-model thinking signatures
 ```
 
 ## Architecture
@@ -53,6 +60,7 @@ src/
 ├── server.js                   # Express server
 ├── constants.js                # Configuration values
 ├── errors.js                   # Custom error classes
+├── fallback-config.js          # Model fallback mappings and helpers
 │
 ├── cloudcode/                  # Cloud Code API client
 │   ├── index.js                # Public API exports
@@ -87,7 +95,7 @@ src/
 │   ├── content-converter.js    # Message content conversion
 │   ├── schema-sanitizer.js     # JSON Schema cleaning for Gemini
 │   ├── thinking-utils.js       # Thinking block validation/recovery
-│   └── signature-cache.js      # In-memory signature cache
+│   └── signature-cache.js      # Signature cache (tool_use + thinking signatures)
 │
 └── utils/                      # Utilities
     ├── helpers.js              # formatDuration, sleep
@@ -101,7 +109,8 @@ src/
 - **src/account-manager/**: Multi-account pool with sticky selection, rate limit handling, and automatic cooldown
 - **src/auth/**: Authentication including Google OAuth, token extraction, and database access
 - **src/format/**: Format conversion between Anthropic and Google Generative AI formats
-- **src/constants.js**: API endpoints, model mappings, OAuth config, and all configuration values
+- **src/constants.js**: API endpoints, model mappings, fallback config, OAuth config, and all configuration values
+- **src/fallback-config.js**: Model fallback mappings (`getFallbackModel()`, `hasFallback()`)
 - **src/errors.js**: Custom error classes (`RateLimitError`, `AuthError`, `ApiError`, etc.)
 
 **Multi-Account Load Balancing:**
@@ -117,6 +126,22 @@ src/
 - `cache_read_input_tokens` returned in usage metadata when cache hits
 - Token calculation: `input_tokens = promptTokenCount - cachedContentTokenCount`
 
+**Model Fallback (--fallback flag):**
+- When all accounts are exhausted for a model, automatically falls back to an alternate model
+- Fallback mappings defined in `MODEL_FALLBACK_MAP` in `src/constants.js`
+- Thinking models fall back to thinking models (e.g., `claude-sonnet-4-5-thinking` → `gemini-3-flash`)
+- Fallback is disabled on recursive calls to prevent infinite chains
+- Enable with `npm start -- --fallback` or `FALLBACK=true` environment variable
+
+**Cross-Model Thinking Signatures:**
+- Claude and Gemini use incompatible thinking signatures
+- When switching models mid-conversation, incompatible signatures are detected and dropped
+- Signature cache tracks model family ('claude' or 'gemini') for each signature
+- `hasGeminiHistory()` detects Gemini→Claude cross-model scenarios
+- Thinking recovery (`closeToolLoopForThinking()`) injects synthetic messages to close interrupted tool loops
+- For Gemini targets: strict validation - drops unknown or mismatched signatures
+- For Claude targets: lenient - lets Claude validate its own signatures
+
 ## Testing Notes
 
 - Tests require the server to be running (`npm start` in separate terminal)
@@ -129,6 +154,7 @@ src/
 **Constants:** All configuration values are centralized in `src/constants.js`:
 - API endpoints and headers
 - Model mappings and model family detection (`getModelFamily()`, `isThinkingModel()`)
+- Model fallback mappings (`MODEL_FALLBACK_MAP`)
 - OAuth configuration
 - Rate limit thresholds
 - Thinking model settings
