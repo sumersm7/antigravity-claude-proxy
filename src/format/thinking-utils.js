@@ -395,7 +395,7 @@ export function analyzeConversationState(messages) {
  * @returns {boolean} True if thinking recovery is needed
  */
 export function needsThinkingRecovery(messages, targetFamily = null) {
-    const state = analyzeConversationState(messages, targetFamily);
+    const state = analyzeConversationState(messages);
 
     if (targetFamily === 'claude') {
         // Claude: only check if thinking is valid/compatible
