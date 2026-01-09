@@ -256,15 +256,15 @@
 
     <!-- Add Account Modal -->
     <dialog id="add_account_modal" class="modal backdrop-blur-sm">
-        <div class="modal-box bg-space-900 border border-space-border text-gray-300 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-            <h3 class="font-bold text-lg text-white" x-text="$store.global.t('addAccount')">Add New Account</h3>
+        <div class="modal-box max-w-md w-full bg-space-900 border border-space-border text-gray-300 shadow-[0_0_50px_rgba(0,0,0,0.5)] p-6">
+            <h3 class="font-bold text-lg text-white mb-4" x-text="$store.global.t('addAccount')">Add New Account</h3>
 
-            <div class="py-6 flex flex-col gap-4">
-                <p class="text-sm text-gray-400" x-text="$store.global.t('connectGoogleDesc')">Connect a Google
+            <div class="flex flex-col gap-4">
+                <p class="text-sm text-gray-400 leading-relaxed" x-text="$store.global.t('connectGoogleDesc')">Connect a Google
                     Workspace account to increase your API quota limit.
                     The account will be used to proxy Claude requests via Antigravity.</p>
 
-                <button class="btn btn-primary flex items-center justify-center gap-3 h-12" @click="addAccountWeb">
+                <button class="btn btn-primary flex items-center justify-center gap-3 h-11" @click="addAccountWeb">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                         <path
                             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z">
@@ -282,23 +282,26 @@
                     <span x-text="$store.global.t('connectGoogle')">Connect Google Account</span>
                 </button>
 
-                <div class="divider text-xs text-gray-600 uppercase" x-text="$store.global.t('or')">OR</div>
-
-                <div class="collapse collapse-arrow bg-space-800 border border-space-border/50">
-                    <input type="checkbox" />
-                    <div class="collapse-title text-sm font-medium text-gray-400"
-                        x-text="$store.global.t('useCliCommand')">
-                        Use CLI Command
-                    </div>
-                    <div class="collapse-content">
-                        <div class="mockup-code bg-black text-gray-300 border border-space-border scale-90 -ml-4 mt-2">
-                            <pre data-prefix="$"><code>npm run accounts:add</code></pre>
+                <div class="text-center mt-2">
+                    <p class="text-xs text-gray-500 mb-2" x-text="$store.global.t('or')">OR</p>
+                    <details class="group">
+                        <summary class="text-xs text-gray-400 hover:text-neon-cyan cursor-pointer transition-colors inline-flex items-center gap-1">
+                            <svg class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                            <span x-text="$store.global.t('useCliCommand')">Use CLI Command</span>
+                        </summary>
+                        <div class="mt-3 p-3 bg-black/50 rounded border border-space-border/30 font-mono text-xs text-gray-300">
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-600">$</span>
+                                <code>npm run accounts:add</code>
+                            </div>
                         </div>
-                    </div>
+                    </details>
                 </div>
             </div>
 
-            <div class="modal-action">
+            <div class="modal-action mt-6">
                 <form method="dialog">
                     <button class="btn btn-ghost hover:bg-white/10" x-text="$store.global.t('close')">Close</button>
                 </form>
