@@ -95,7 +95,7 @@ function openBrowser(url) {
         args = [url];
     } else if (platform === 'win32') {
         command = 'cmd';
-        args = ['/c', 'start', '', url];
+        args = ['/c', 'start', '', url.replace(/&/g, '^&')];
     } else {
         command = 'xdg-open';
         args = [url];
