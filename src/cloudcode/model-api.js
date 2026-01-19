@@ -85,6 +85,8 @@ export async function fetchAvailableModels(token, projectId = null, authType = A
     // Include project ID in body for accurate quota info (per Quotio implementation)
     const body = projectId ? { project: projectId } : {};
 
+    let lastError = null;
+
     for (const endpoint of endpoints) {
         try {
             const url = `${endpoint}/v1internal:fetchAvailableModels`;
@@ -96,17 +98,27 @@ export async function fetchAvailableModels(token, projectId = null, authType = A
 
             if (!response.ok) {
                 const errorText = await response.text();
-                logger.warn(`[CloudCode] fetchAvailableModels error at ${endpoint}: ${response.status}`);
+                lastError = `${response.status} ${response.statusText}`;
+                try {
+                    const errorJson = JSON.parse(errorText);
+                    if (errorJson.error?.message) {
+                        lastError = errorJson.error.message;
+                    }
+                } catch (e) {
+                    lastError = `${response.status} - ${errorText.substring(0, 100)}`;
+                }
+                logger.warn(`[CloudCode] fetchAvailableModels error at ${endpoint}: ${lastError}`);
                 continue;
             }
 
             return await response.json();
         } catch (error) {
+            lastError = error.message;
             logger.warn(`[CloudCode] fetchAvailableModels failed at ${endpoint}:`, error.message);
         }
     }
 
-    throw new Error('Failed to fetch available models from all endpoints');
+    throw new Error(lastError || 'Failed to fetch available models from all endpoints');
 }
 
 /**
