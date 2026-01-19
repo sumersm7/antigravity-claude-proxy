@@ -29,7 +29,7 @@ import { onboardUser, getDefaultTierId } from './onboarding.js';
  */
 export async function getTokenForAccount(account, tokenCache, onInvalid, onSave) {
     // Check cache first
-    const cached = tokenCache.get(account.email);
+    const cached = tokenCache.get(account.id);
     if (cached && (Date.now() - cached.extractedAt) < TOKEN_REFRESH_INTERVAL_MS) {
         return cached.token;
     }
@@ -59,7 +59,7 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
 
             logger.error(`[AccountManager] Failed to refresh token for ${account.email}:`, error.message);
             // Mark account as invalid (credentials need re-auth)
-            if (onInvalid) onInvalid(account.email, error.message);
+            if (onInvalid) onInvalid(account.id, error.message);
             throw new Error(`AUTH_INVALID: ${account.email}: ${error.message}`);
         }
     } else if (account.source === 'manual' && account.apiKey) {
@@ -72,7 +72,7 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
     }
 
     // Cache the token
-    tokenCache.set(account.email, {
+    tokenCache.set(account.id, {
         token,
         extractedAt: Date.now()
     });
@@ -90,20 +90,20 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
  */
 export async function getProjectForAccount(account, token, projectCache) {
     // Check cache first
-    const cached = projectCache.get(account.email);
+    const cached = projectCache.get(account.id);
     if (cached) {
         return cached;
     }
 
     // OAuth or manual accounts may have projectId specified
     if (account.projectId) {
-        projectCache.set(account.email, account.projectId);
+        projectCache.set(account.id, account.projectId);
         return account.projectId;
     }
 
     // Discover project via loadCodeAssist API
     const project = await discoverProject(token);
-    projectCache.set(account.email, project);
+    projectCache.set(account.id, project);
     return project;
 }
 

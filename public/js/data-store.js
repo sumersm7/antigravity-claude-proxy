@@ -40,7 +40,7 @@ document.addEventListener('alpine:init', () => {
             // Watch filters to recompute
             // Alpine stores don't have $watch automatically unless inside a component?
             // We can manually call compute when filters change.
-            
+
             // Start health check monitoring
             this.startHealthCheck();
         },
@@ -65,7 +65,7 @@ document.addEventListener('alpine:init', () => {
                         this.models = data.models;
                         this.modelConfig = data.modelConfig || {};
                         this.usageHistory = data.usageHistory || {};
-                        
+
                         // Don't show loading on initial load if we have cache
                         this.initialLoad = false;
                         this.computeQuotaRows();
@@ -158,12 +158,12 @@ document.addEventListener('alpine:init', () => {
             try {
                 // Get password from global store
                 const password = Alpine.store('global').webuiPassword;
-                
+
                 // Use lightweight endpoint (no quota fetching)
                 const { response, newPassword } = await window.utils.request('/api/config', {}, password);
-                
+
                 if (newPassword) Alpine.store('global').webuiPassword = newPassword;
-                
+
                 if (response.ok) {
                     this.connectionStatus = 'connected';
                 } else {
@@ -255,7 +255,7 @@ document.addEventListener('alpine:init', () => {
                 let minResetTime = null;
 
                 this.accounts.forEach(acc => {
-                    if (this.filters.account !== 'all' && acc.email !== this.filters.account) return;
+                    if (this.filters.account !== 'all' && acc.id !== this.filters.account && acc.email !== this.filters.account) return;
 
                     const limit = acc.limits?.[modelId];
                     if (!limit) return;
@@ -305,7 +305,7 @@ document.addEventListener('alpine:init', () => {
 
             this.quotaRows = rows.sort((a, b) => {
                 if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-                
+
                 let valA = a[sortCol];
                 let valB = b[sortCol];
 

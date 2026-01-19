@@ -114,12 +114,12 @@
                 </template>
 
                 <!-- Account Rows -->
-                <template x-for="acc in filteredAccounts" :key="acc.email">
+                <template x-for="acc in filteredAccounts" :key="acc.id || acc.email">
                     <tr class="border-b border-space-border/30 last:border-0 hover:bg-white/5 transition-colors group">
                         <td class="pl-6 py-4">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" class="sr-only peer" :checked="acc.enabled !== false"
-                                    @change="toggleAccount(acc.email, $el.checked)">
+                                    @change="toggleAccount(acc.id, $el.checked)">
                                 <div
                                     class="w-9 h-5 bg-space-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-gray-600 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-neon-green peer-checked:after:bg-white">
                                 </div>
@@ -147,8 +147,10 @@
                             <span :class="{
                                       'status-pill-ultra': acc.subscription?.tier === 'ultra',
                                       'status-pill-pro': acc.subscription?.tier === 'pro',
-                                      'status-pill-free': !acc.subscription || acc.subscription.tier === 'free' || acc.subscription.tier === 'unknown'
-                                  }" x-text="(acc.subscription?.tier || 'free').toUpperCase()">
+                                      'status-pill-free': acc.subscription?.tier === 'free',
+                                      'text-gray-600 text-xs font-mono': !acc.subscription?.tier || acc.subscription.tier === 'unknown'
+                                  }"
+                                x-text="(!acc.subscription?.tier || acc.subscription.tier === 'unknown') ? '-' : acc.subscription.tier.toUpperCase()">
                             </span>
                         </td>
                         <td class="py-4 cursor-pointer" @click="openQuotaModal(acc)">
@@ -189,12 +191,12 @@
                                 <!-- Fix Button -->
                                 <button x-show="acc.status === 'invalid'"
                                     class="px-3 py-1 text-[10px] font-bold font-mono uppercase tracking-wider rounded bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/30 hover:border-yellow-500/50 transition-all"
-                                    @click="fixAccount(acc.email)" x-text="$store.global.t('fix')">
+                                    @click="fixAccount(acc)" x-text="$store.global.t('fix')">
                                     FIX
                                 </button>
                                 <button
                                     class="p-2 rounded hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-                                    @click="refreshAccount(acc.email)" :disabled="refreshing"
+                                    @click="refreshAccount(acc.id)" :disabled="refreshing"
                                     :title="$store.global.t('refreshData')">
                                     <svg class="w-4 h-4 transition-transform" :class="{ 'animate-spin': refreshing }"
                                         fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,7 +207,7 @@
                                 <button class="p-2 rounded transition-colors"
                                     :class="acc.source === 'database' ? 'text-gray-700 cursor-not-allowed' : 'hover:bg-red-500/10 text-gray-500 hover:text-red-400'"
                                     :disabled="acc.source === 'database'"
-                                    @click="acc.source !== 'database' && confirmDeleteAccount(acc.email)"
+                                    @click="acc.source !== 'database' && confirmDeleteAccount(acc.id, acc.email)"
                                     :title="acc.source === 'database' ? $store.global.t('cannotDeleteDatabase') : $store.global.t('delete')">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -263,7 +265,7 @@
             </h3>
             <p class="py-4 text-gray-300">
                 <span x-text="$store.global.t('confirmDeletePrompt')">Are you sure you want to delete account</span>
-                <strong class="text-white font-mono" x-text="deleteTarget"></strong>?
+                <strong class="text-white font-mono" x-text="deleteTargetEmail"></strong>?
             </p>
             <div class="bg-red-500/10 border border-red-500/30 rounded p-3 mb-4">
                 <p class="text-sm text-red-300 flex items-start gap-2">

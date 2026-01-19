@@ -37,8 +37,8 @@ export class AccountManager {
     #strategyName = DEFAULT_STRATEGY;
 
     // Per-account caches
-    #tokenCache = new Map(); // email -> { token, extractedAt }
-    #projectCache = new Map(); // email -> projectId
+    #tokenCache = new Map(); // id -> { token, extractedAt }
+    #projectCache = new Map(); // id -> projectId
 
     constructor(configPath = ACCOUNT_CONFIG_PATH, strategyName = null) {
         this.#configPath = configPath;
@@ -174,6 +174,16 @@ export class AccountManager {
     }
 
     /**
+     * Pick next account (convenience alias for selectAccount without options)
+     * Used by listModels endpoint
+     * @returns {Object|null} Selected account or null if none available
+     */
+    pickNext() {
+        const { account } = this.selectAccount();
+        return account;
+    }
+
+    /**
      * Notify the strategy of a successful request
      * @param {Object} account - The account that was used
      * @param {string} modelId - The model ID that was used
@@ -237,22 +247,22 @@ export class AccountManager {
 
     /**
      * Mark an account as rate-limited
-     * @param {string} email - Email of the account to mark
+     * @param {string} id - ID of the account to mark
      * @param {number|null} resetMs - Time in ms until rate limit resets (optional)
      * @param {string} [modelId] - Optional model ID to mark specific limit
      */
-    markRateLimited(email, resetMs = null, modelId = null) {
-        markLimited(this.#accounts, email, resetMs, modelId);
+    markRateLimited(id, resetMs = null, modelId = null) {
+        markLimited(this.#accounts, id, resetMs, modelId);
         this.saveToDisk();
     }
 
     /**
      * Mark an account as invalid (credentials need re-authentication)
-     * @param {string} email - Email of the account to mark
+     * @param {string} id - ID of the account to mark
      * @param {string} reason - Reason for marking as invalid
      */
-    markInvalid(email, reason = 'Unknown error') {
-        markAccountInvalid(this.#accounts, email, reason);
+    markInvalid(id, reason = 'Unknown error') {
+        markAccountInvalid(this.#accounts, id, reason);
         this.saveToDisk();
     }
 
@@ -267,12 +277,12 @@ export class AccountManager {
 
     /**
      * Get rate limit info for a specific account and model
-     * @param {string} email - Email of the account
+     * @param {string} id - ID of the account
      * @param {string} modelId - Model ID to check
      * @returns {{isRateLimited: boolean, actualResetMs: number|null, waitMs: number}} Rate limit info
      */
-    getRateLimitInfo(email, modelId) {
-        return getLimitInfo(this.#accounts, email, modelId);
+    getRateLimitInfo(id, modelId) {
+        return getLimitInfo(this.#accounts, id, modelId);
     }
 
     /**
@@ -285,7 +295,7 @@ export class AccountManager {
         return fetchToken(
             account,
             this.#tokenCache,
-            (email, reason) => this.markInvalid(email, reason),
+            (id, reason) => this.markInvalid(id, reason),
             () => this.saveToDisk()
         );
     }
@@ -302,18 +312,18 @@ export class AccountManager {
 
     /**
      * Clear project cache for an account (useful on auth errors)
-     * @param {string|null} email - Email to clear cache for, or null to clear all
+     * @param {string|null} id - ID to clear cache for, or null to clear all
      */
-    clearProjectCache(email = null) {
-        clearProject(this.#projectCache, email);
+    clearProjectCache(id = null) {
+        clearProject(this.#projectCache, id);
     }
 
     /**
      * Clear token cache for an account (useful on auth errors)
-     * @param {string|null} email - Email to clear cache for, or null to clear all
+     * @param {string|null} id - ID to clear cache for, or null to clear all
      */
-    clearTokenCache(email = null) {
-        clearToken(this.#tokenCache, email);
+    clearTokenCache(id = null) {
+        clearToken(this.#tokenCache, id);
     }
 
     /**
@@ -347,8 +357,10 @@ export class AccountManager {
             invalid: invalid.length,
             summary: `${this.#accounts.length} total, ${available.length} available, ${rateLimited.length} rate-limited, ${invalid.length} invalid`,
             accounts: this.#accounts.map(a => ({
+                id: a.id,
                 email: a.email,
                 source: a.source,
+                authType: a.authType || 'antigravity',  // Include auth type for UI display
                 enabled: a.enabled !== false,  // Default to true if undefined
                 projectId: a.projectId || null,
                 modelRateLimits: a.modelRateLimits || {},

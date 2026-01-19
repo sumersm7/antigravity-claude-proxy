@@ -15,7 +15,9 @@ import {
     EXTENDED_COOLDOWN_MS,
     CAPACITY_RETRY_DELAY_MS,
     MAX_CAPACITY_RETRIES,
-    isThinkingModel
+    isThinkingModel,
+    AUTH_TYPES,
+    GEMINI_CLI_ENDPOINTS
 } from '../constants.js';
 import { convertGoogleToAnthropic } from '../format/index.js';
 import { isRateLimitError, isAuthError } from '../errors.js';
@@ -185,18 +187,24 @@ export async function sendMessage(anthropicRequest, accountManager, fallbackEnab
             // Get token and project for this account
             const token = await accountManager.getTokenForAccount(account);
             const project = await accountManager.getProjectForAccount(account, token);
-            const payload = buildCloudCodeRequest(anthropicRequest, project);
+            const authType = account.authType || AUTH_TYPES.ANTIGRAVITY;
+            const payload = buildCloudCodeRequest(anthropicRequest, project, authType);
 
-            logger.debug(`[CloudCode] Sending request for model: ${model}`);
+            logger.debug(`[CloudCode] Sending request for model: ${model} (Auth: ${authType})`);
 
             // Try each endpoint with index-based loop for capacity retry support
+            // Select endpoint list based on authType
+            const endpoints = authType === AUTH_TYPES.GEMINI_CLI
+                ? GEMINI_CLI_ENDPOINTS
+                : ANTIGRAVITY_ENDPOINT_FALLBACKS;
+
             let lastError = null;
             let retriedOnce = false; // Track if we've already retried for short rate limit
             let capacityRetryCount = 0; // Gap 4: Track capacity exhaustion retries
             let endpointIndex = 0;
 
-            while (endpointIndex < ANTIGRAVITY_ENDPOINT_FALLBACKS.length) {
-                const endpoint = ANTIGRAVITY_ENDPOINT_FALLBACKS[endpointIndex];
+            while (endpointIndex < endpoints.length) {
+                const endpoint = endpoints[endpointIndex];
                 try {
                     const url = isThinking
                         ? `${endpoint}/v1internal:streamGenerateContent?alt=sse`
@@ -204,7 +212,7 @@ export async function sendMessage(anthropicRequest, accountManager, fallbackEnab
 
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json'),
+                        headers: buildHeaders(token, model, isThinking ? 'text/event-stream' : 'application/json', authType),
                         body: JSON.stringify(payload)
                     });
 

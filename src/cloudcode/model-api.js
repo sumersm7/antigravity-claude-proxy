@@ -9,7 +9,10 @@ import {
     ANTIGRAVITY_HEADERS,
     LOAD_CODE_ASSIST_ENDPOINTS,
     LOAD_CODE_ASSIST_HEADERS,
-    getModelFamily
+    getModelFamily,
+    AUTH_TYPES,
+    GEMINI_CLI_OAUTH_CONFIG,
+    GEMINI_CLI_ENDPOINTS
 } from '../constants.js';
 import { logger } from '../utils/logger.js';
 
@@ -28,10 +31,11 @@ function isSupportedModel(modelId) {
  * Fetches models dynamically from the Cloud Code API
  *
  * @param {string} token - OAuth access token
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{object: string, data: Array<{id: string, object: string, created: number, owned_by: string, description: string}>}>} List of available models
  */
-export async function listModels(token) {
-    const data = await fetchAvailableModels(token);
+export async function listModels(token, authType) {
+    const data = await fetchAvailableModels(token, null, authType);
     if (!data || !data.models) {
         return { object: 'list', data: [] };
     }
@@ -39,12 +43,12 @@ export async function listModels(token) {
     const modelList = Object.entries(data.models)
         .filter(([modelId]) => isSupportedModel(modelId))
         .map(([modelId, modelData]) => ({
-        id: modelId,
-        object: 'model',
-        created: Math.floor(Date.now() / 1000),
-        owned_by: 'anthropic',
-        description: modelData.displayName || modelId
-    }));
+            id: modelId,
+            object: 'model',
+            created: Math.floor(Date.now() / 1000),
+            owned_by: 'anthropic',
+            description: modelData.displayName || modelId
+        }));
 
     return {
         object: 'list',
@@ -58,19 +62,30 @@ export async function listModels(token) {
  *
  * @param {string} token - OAuth access token
  * @param {string} [projectId] - Optional project ID for accurate quota info
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<Object>} Raw response from fetchAvailableModels API
  */
-export async function fetchAvailableModels(token, projectId = null) {
+export async function fetchAvailableModels(token, projectId = null, authType = AUTH_TYPES.ANTIGRAVITY) {
+    let baseHeaders = ANTIGRAVITY_HEADERS;
+    let endpoints = ANTIGRAVITY_ENDPOINT_FALLBACKS;
+
+    if (authType === AUTH_TYPES.GEMINI_CLI) {
+        baseHeaders = {
+            'User-Agent': GEMINI_CLI_OAUTH_CONFIG.userAgent
+        };
+        endpoints = GEMINI_CLI_ENDPOINTS;
+    }
+
     const headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...ANTIGRAVITY_HEADERS
+        ...baseHeaders
     };
 
     // Include project ID in body for accurate quota info (per Quotio implementation)
     const body = projectId ? { project: projectId } : {};
 
-    for (const endpoint of ANTIGRAVITY_ENDPOINT_FALLBACKS) {
+    for (const endpoint of endpoints) {
         try {
             const url = `${endpoint}/v1internal:fetchAvailableModels`;
             const response = await fetch(url, {
@@ -100,10 +115,11 @@ export async function fetchAvailableModels(token, projectId = null) {
  *
  * @param {string} token - OAuth access token
  * @param {string} [projectId] - Optional project ID for accurate quota info
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<Object>} Map of modelId -> { remainingFraction, resetTime }
  */
-export async function getModelQuotas(token, projectId = null) {
-    const data = await fetchAvailableModels(token, projectId);
+export async function getModelQuotas(token, projectId = null, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const data = await fetchAvailableModels(token, projectId, authType);
     if (!data || !data.models) return {};
 
     const quotas = {};
@@ -153,16 +169,27 @@ function parseTierId(tierId) {
  * Calls loadCodeAssist API to discover project ID and subscription tier
  *
  * @param {string} token - OAuth access token
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{tier: string, projectId: string|null}>} Subscription tier (free/pro/ultra) and project ID
  */
-export async function getSubscriptionTier(token) {
+export async function getSubscriptionTier(token, authType = AUTH_TYPES.ANTIGRAVITY) {
+    let baseHeaders = LOAD_CODE_ASSIST_HEADERS;
+    let endpoints = LOAD_CODE_ASSIST_ENDPOINTS;
+
+    if (authType === AUTH_TYPES.GEMINI_CLI) {
+        baseHeaders = {
+            'User-Agent': GEMINI_CLI_OAUTH_CONFIG.userAgent
+        };
+        endpoints = GEMINI_CLI_ENDPOINTS;
+    }
+
     const headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...LOAD_CODE_ASSIST_HEADERS
+        ...baseHeaders
     };
 
-    for (const endpoint of LOAD_CODE_ASSIST_ENDPOINTS) {
+    for (const endpoint of endpoints) {
         try {
             const url = `${endpoint}/v1internal:loadCodeAssist`;
             const response = await fetch(url, {

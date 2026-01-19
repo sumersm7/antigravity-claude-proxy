@@ -115,8 +115,8 @@ export function resetAllRateLimits(accounts) {
  * @param {string} modelId - Model ID to mark rate limit for
  * @returns {boolean} True if account was found and marked
  */
-export function markRateLimited(accounts, email, resetMs = null, modelId) {
-    const account = accounts.find(a => a.email === email);
+export function markRateLimited(accounts, id, resetMs = null, modelId) {
+    const account = accounts.find(a => a.id === id);
     if (!account) return false;
 
     // Store the ACTUAL reset time from the API
@@ -155,8 +155,8 @@ export function markRateLimited(accounts, email, resetMs = null, modelId) {
  * @param {string} reason - Reason for marking as invalid
  * @returns {boolean} True if account was found and marked
  */
-export function markInvalid(accounts, email, reason = 'Unknown error') {
-    const account = accounts.find(a => a.email === email);
+export function markInvalid(accounts, id, reason = 'Unknown error') {
+    const account = accounts.find(a => a.id === id);
     if (!account) return false;
 
     account.isInvalid = true;
@@ -219,8 +219,8 @@ export function getMinWaitTimeMs(accounts, modelId) {
  * @param {string} modelId - Model ID to check
  * @returns {{isRateLimited: boolean, actualResetMs: number|null, waitMs: number}} Rate limit info
  */
-export function getRateLimitInfo(accounts, email, modelId) {
-    const account = accounts.find(a => a.email === email);
+export function getRateLimitInfo(accounts, id, modelId) {
+    const account = accounts.find(a => a.id === id);
     if (!account || !account.modelRateLimits || !account.modelRateLimits[modelId]) {
         return { isRateLimited: false, actualResetMs: null, waitMs: 0 };
     }

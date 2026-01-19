@@ -388,6 +388,7 @@ app.get('/account-limits', async (req, res) => {
                     });
 
                     return {
+                        id: account.id, // Include ID
                         email: account.email,
                         status: 'ok',
                         subscription: account.subscription,
@@ -395,6 +396,7 @@ app.get('/account-limits', async (req, res) => {
                     };
                 } catch (error) {
                     return {
+                        id: account.id, // Include ID
                         email: account.email,
                         status: 'error',
                         error: error.message,
@@ -411,6 +413,7 @@ app.get('/account-limits', async (req, res) => {
                 return result.value;
             } else {
                 return {
+                    id: allAccounts[index].id, // Include ID
                     email: allAccounts[index].email,
                     status: 'error',
                     error: result.reason?.message || 'Unknown error',
@@ -547,9 +550,19 @@ app.get('/account-limits', async (req, res) => {
 
         // Get account metadata from AccountManager
         const accountStatus = accountManager.getStatus();
-        const accountMetadataMap = new Map(
-            accountStatus.accounts.map(a => [a.email, a])
-        );
+        // Create map using ID for guaranteed uniqueness
+        const accountMetadataMap = new Map();
+        accountStatus.accounts.forEach(acc => {
+            if (acc.id) {
+                accountMetadataMap.set(acc.id, acc);
+            }
+            // Also map by email for backward compatibility / fallback
+            // But don't overwrite if ID-based entry exists (though Map keys are unique)
+            // Note: email mapping is lossy for duplicates
+            if (!accountMetadataMap.has(acc.email)) {
+                accountMetadataMap.set(acc.email, acc);
+            }
+        });
 
         // Build response data
         const responseData = {
@@ -559,8 +572,11 @@ app.get('/account-limits', async (req, res) => {
             modelConfig: config.modelMapping || {},
             accounts: accountLimits.map(acc => {
                 // Merge quota data with account metadata
-                const metadata = accountMetadataMap.get(acc.email) || {};
+                // Try ID first, then email
+                const metadata = accountMetadataMap.get(acc.id) || accountMetadataMap.get(acc.email) || {};
+
                 return {
+                    id: acc.id || metadata.id, // Ensure ID is present
                     email: acc.email,
                     status: acc.status,
                     error: acc.error || null,
@@ -572,6 +588,7 @@ app.get('/account-limits', async (req, res) => {
                     invalidReason: metadata.invalidReason || null,
                     lastUsed: metadata.lastUsed || null,
                     modelRateLimits: metadata.modelRateLimits || {},
+                    authType: metadata.authType || 'antigravity',
                     // Subscription data (new)
                     subscription: acc.subscription || metadata.subscription || { tier: 'unknown', projectId: null },
                     // Quota limits
@@ -649,7 +666,7 @@ app.get('/v1/models', async (req, res) => {
             });
         }
         const token = await accountManager.getTokenForAccount(account);
-        const models = await listModels(token);
+        const models = await listModels(token, account.authType);
         res.json(models);
     } catch (error) {
         logger.error('[API] Error listing models:', error);

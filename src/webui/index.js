@@ -48,26 +48,27 @@ const pendingOAuthFlows = new Map();
 /**
  * Set account enabled/disabled state
  */
-async function setAccountEnabled(email, enabled) {
+async function setAccountEnabled(id, enabled) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
-    const account = accounts.find(a => a.email === email);
+    const account = accounts.find(a => a.id === id);
     if (!account) {
-        throw new Error(`Account ${email} not found`);
+        throw new Error(`Account ${id} not found`);
     }
     account.enabled = enabled;
     await saveAccounts(ACCOUNT_CONFIG_PATH, accounts, settings, activeIndex);
-    logger.info(`[WebUI] Account ${email} ${enabled ? 'enabled' : 'disabled'}`);
+    logger.info(`[WebUI] Account ${account.email} (${id}) ${enabled ? 'enabled' : 'disabled'}`);
 }
 
 /**
  * Remove account from config
  */
-async function removeAccount(email) {
+async function removeAccount(id) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
-    const index = accounts.findIndex(a => a.email === email);
+    const index = accounts.findIndex(a => a.id === id);
     if (index === -1) {
-        throw new Error(`Account ${email} not found`);
+        throw new Error(`Account ${id} not found`);
     }
+    const email = accounts[index].email;
     accounts.splice(index, 1);
     // Adjust activeIndex if needed
     const newActiveIndex = activeIndex >= accounts.length ? Math.max(0, accounts.length - 1) : activeIndex;
@@ -81,13 +82,17 @@ async function removeAccount(email) {
 async function addAccount(accountData) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
 
+    // Generate ID if not present
+    const id = accountData.id || `${accountData.email}:${accountData.authType || 'antigravity'}`;
+    const accountWithId = { ...accountData, id };
+
     // Check if account already exists
-    const existingIndex = accounts.findIndex(a => a.email === accountData.email);
+    const existingIndex = accounts.findIndex(a => a.id === id);
     if (existingIndex !== -1) {
         // Update existing account
         accounts[existingIndex] = {
             ...accounts[existingIndex],
-            ...accountData,
+            ...accountWithId,
             enabled: true,
             isInvalid: false,
             invalidReason: null,
@@ -97,7 +102,7 @@ async function addAccount(accountData) {
     } else {
         // Add new account
         accounts.push({
-            ...accountData,
+            ...accountWithId,
             enabled: true,
             isInvalid: false,
             invalidReason: null,
@@ -176,14 +181,15 @@ export function mountWebUI(app, dirname, accountManager) {
     /**
      * POST /api/accounts/:email/refresh - Refresh specific account token
      */
-    app.post('/api/accounts/:email/refresh', async (req, res) => {
+    app.post('/api/accounts/:id/refresh', async (req, res) => {
         try {
-            const { email } = req.params;
-            accountManager.clearTokenCache(email);
-            accountManager.clearProjectCache(email);
+            const { id } = req.params;
+            const decodedId = decodeURIComponent(id);
+            accountManager.clearTokenCache(decodedId);
+            accountManager.clearProjectCache(decodedId);
             res.json({
                 status: 'ok',
-                message: `Token cache cleared for ${email}`
+                message: `Token cache cleared for ${decodedId}`
             });
         } catch (error) {
             res.status(500).json({ status: 'error', error: error.message });
@@ -193,23 +199,24 @@ export function mountWebUI(app, dirname, accountManager) {
     /**
      * POST /api/accounts/:email/toggle - Enable/disable account
      */
-    app.post('/api/accounts/:email/toggle', async (req, res) => {
+    app.post('/api/accounts/:id/toggle', async (req, res) => {
         try {
-            const { email } = req.params;
+            const { id } = req.params;
+            const decodedId = decodeURIComponent(id);
             const { enabled } = req.body;
 
             if (typeof enabled !== 'boolean') {
                 return res.status(400).json({ status: 'error', error: 'enabled must be a boolean' });
             }
 
-            await setAccountEnabled(email, enabled);
+            await setAccountEnabled(decodedId, enabled);
 
             // Reload AccountManager to pick up changes
             await accountManager.reload();
 
             res.json({
                 status: 'ok',
-                message: `Account ${email} ${enabled ? 'enabled' : 'disabled'}`
+                message: `Account ${decodedId} ${enabled ? 'enabled' : 'disabled'}`
             });
         } catch (error) {
             res.status(500).json({ status: 'error', error: error.message });
@@ -219,17 +226,18 @@ export function mountWebUI(app, dirname, accountManager) {
     /**
      * DELETE /api/accounts/:email - Remove account
      */
-    app.delete('/api/accounts/:email', async (req, res) => {
+    app.delete('/api/accounts/:id', async (req, res) => {
         try {
-            const { email } = req.params;
-            await removeAccount(email);
+            const { id } = req.params;
+            const decodedId = decodeURIComponent(id);
+            await removeAccount(decodedId);
 
             // Reload AccountManager to pick up changes
             await accountManager.reload();
 
             res.json({
                 status: 'ok',
-                message: `Account ${email} removed`
+                message: `Account ${decodedId} removed`
             });
         } catch (error) {
             res.status(500).json({ status: 'error', error: error.message });

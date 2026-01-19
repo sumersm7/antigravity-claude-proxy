@@ -46,6 +46,11 @@ export const ANTIGRAVITY_ENDPOINT_FALLBACKS = [
     ANTIGRAVITY_ENDPOINT_PROD
 ];
 
+// Gemini CLI uses only the Prod endpoint
+export const GEMINI_CLI_ENDPOINTS = [
+    ANTIGRAVITY_ENDPOINT_PROD
+];
+
 // Required headers for Antigravity API requests
 export const ANTIGRAVITY_HEADERS = {
     'User-Agent': getPlatformUserAgent(),
@@ -176,12 +181,11 @@ export const AUTH_TYPES = {
     GEMINI_CLI: 'gemini-cli'
 };
 
+
 // Antigravity OAuth configuration (from opencode-antigravity-auth)
 export const ANTIGRAVITY_OAUTH_CONFIG = {
     clientId: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
     clientSecret: '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',
-    endpointBase: 'https://daily-cloudcode-pa.googleapis.com',
-    userAgent: `antigravity/1.11.5 ${platform()}/${arch()}`,
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',

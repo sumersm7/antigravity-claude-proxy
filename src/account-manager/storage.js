@@ -27,6 +27,8 @@ export async function loadAccounts(configPath = ACCOUNT_CONFIG_PATH) {
         const accounts = (config.accounts || []).map(acc => ({
             ...acc,
             authType: acc.authType || 'antigravity', // Default to antigravity for migration
+            // Generate stable ID from email and authType if not present
+            id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`,
             lastUsed: acc.lastUsed || null,
             enabled: acc.enabled !== false, // Default to true if not specified
             // Reset invalid flag on startup - give accounts a fresh chance to refresh
@@ -72,13 +74,14 @@ export function loadDefaultAccount(dbPath) {
         if (authData?.apiKey) {
             const account = {
                 email: authData.email || 'default@antigravity',
+                id: `${authData.email || 'default@antigravity'}:database`,
                 source: 'database',
                 lastUsed: null,
                 modelRateLimits: {}
             };
 
             const tokenCache = new Map();
-            tokenCache.set(account.email, {
+            tokenCache.set(account.id, {
                 token: authData.apiKey,
                 extractedAt: Date.now()
             });
@@ -110,6 +113,7 @@ export async function saveAccounts(configPath, accounts, settings, activeIndex) 
 
         const config = {
             accounts: accounts.map(acc => ({
+                id: acc.id,
                 email: acc.email,
                 authType: acc.authType || 'antigravity', // Persist auth type
                 source: acc.source,
