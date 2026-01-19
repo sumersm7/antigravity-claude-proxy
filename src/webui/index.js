@@ -635,9 +635,23 @@ export function mountWebUI(app, dirname, accountManager) {
      * GET /api/auth/url - Get OAuth URL to start the flow
      * Uses CLI's OAuth flow (localhost:51121) instead of WebUI's port
      * to match Google OAuth Console's authorized redirect URIs
+     * 
+     * Query params:
+     *   - type: 'antigravity' (default) or 'gemini-cli'
      */
     app.get('/api/auth/url', async (req, res) => {
         try {
+            // Get auth type from query param (default: antigravity)
+            const authType = req.query.type || 'antigravity';
+
+            // Validate auth type
+            if (!['antigravity', 'gemini-cli'].includes(authType)) {
+                return res.status(400).json({
+                    status: 'error',
+                    error: 'Invalid auth type. Must be "antigravity" or "gemini-cli"'
+                });
+            }
+
             // Clean up old flows (> 10 mins)
             const now = Date.now();
             for (const [key, val] of pendingOAuthFlows.entries()) {
@@ -646,17 +660,18 @@ export function mountWebUI(app, dirname, accountManager) {
                 }
             }
 
-            // Generate OAuth URL using default redirect URI (localhost:51121)
-            const { url, verifier, state } = getAuthorizationUrl();
+            // Generate OAuth URL using authType-specific config
+            const { url, verifier, state } = getAuthorizationUrl(authType);
 
             // Start callback server on port 51121 (same as CLI)
             const serverPromise = startCallbackServer(state, 120000); // 2 min timeout
 
-            // Store the flow data
+            // Store the flow data including authType
             pendingOAuthFlows.set(state, {
                 serverPromise,
                 verifier,
                 state,
+                authType,
                 timestamp: Date.now()
             });
 
@@ -664,21 +679,22 @@ export function mountWebUI(app, dirname, accountManager) {
             serverPromise
                 .then(async (code) => {
                     try {
-                        logger.info('[WebUI] Received OAuth callback, completing flow...');
-                        const accountData = await completeOAuthFlow(code, verifier);
+                        logger.info(`[WebUI] Received OAuth callback for ${authType}, completing flow...`);
+                        const accountData = await completeOAuthFlow(code, verifier, authType);
 
-                        // Add or update the account
+                        // Add or update the account with authType
                         await addAccount({
                             email: accountData.email,
                             refreshToken: accountData.refreshToken,
                             projectId: accountData.projectId,
-                            source: 'oauth'
+                            source: 'oauth',
+                            authType: authType
                         });
 
                         // Reload AccountManager to pick up the new account
                         await accountManager.reload();
 
-                        logger.success(`[WebUI] Account ${accountData.email} added successfully`);
+                        logger.success(`[WebUI] Account ${accountData.email} (${authType}) added successfully`);
                     } catch (err) {
                         logger.error('[WebUI] OAuth flow completion error:', err);
                     } finally {
@@ -690,7 +706,7 @@ export function mountWebUI(app, dirname, accountManager) {
                     pendingOAuthFlows.delete(state);
                 });
 
-            res.json({ status: 'ok', url });
+            res.json({ status: 'ok', url, authType });
         } catch (error) {
             logger.error('[WebUI] Error generating auth URL:', error);
             res.status(500).json({ status: 'error', error: error.message });

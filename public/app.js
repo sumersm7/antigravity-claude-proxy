@@ -68,24 +68,24 @@ document.addEventListener('alpine:init', () => {
             // Handle responsive sidebar transitions
             let lastWidth = window.innerWidth;
             let resizeTimeout = null;
-            
+
             window.addEventListener('resize', () => {
                 if (resizeTimeout) clearTimeout(resizeTimeout);
-                
+
                 resizeTimeout = setTimeout(() => {
                     const currentWidth = window.innerWidth;
                     const lgBreakpoint = 1024;
-                    
+
                     // Desktop -> Mobile: Auto-close sidebar to prevent overlay blocking screen
                     if (lastWidth >= lgBreakpoint && currentWidth < lgBreakpoint) {
                         this.sidebarOpen = false;
                     }
-                    
+
                     // Mobile -> Desktop: Auto-open sidebar (restore standard desktop layout)
                     if (lastWidth < lgBreakpoint && currentWidth >= lgBreakpoint) {
                         this.sidebarOpen = true;
                     }
-                    
+
                     lastWidth = currentWidth;
                 }, 150);
             });
@@ -127,12 +127,12 @@ document.addEventListener('alpine:init', () => {
             return Alpine.store('global')?.t(key) || key;
         },
 
-        async addAccountWeb(reAuthEmail = null) {
+        async addAccountWeb(reAuthEmail = null, authType = 'antigravity') {
             const password = Alpine.store('global').webuiPassword;
             try {
-                const urlPath = reAuthEmail
-                    ? `/api/auth/url?email=${encodeURIComponent(reAuthEmail)}`
-                    : '/api/auth/url';
+                let urlPath = reAuthEmail
+                    ? `/api/auth/url?email=${encodeURIComponent(reAuthEmail)}&type=${authType}`
+                    : `/api/auth/url?type=${authType}`;
 
                 const { response, newPassword } = await window.utils.request(urlPath, {}, password);
                 if (newPassword) Alpine.store('global').webuiPassword = newPassword;

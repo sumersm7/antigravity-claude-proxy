@@ -170,10 +170,18 @@ export function isThinkingModel(modelName) {
     return false;
 }
 
-// Google OAuth configuration (from opencode-antigravity-auth)
-export const OAUTH_CONFIG = {
+// Auth type constants for distinguishing OAuth providers
+export const AUTH_TYPES = {
+    ANTIGRAVITY: 'antigravity',
+    GEMINI_CLI: 'gemini-cli'
+};
+
+// Antigravity OAuth configuration (from opencode-antigravity-auth)
+export const ANTIGRAVITY_OAUTH_CONFIG = {
     clientId: '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
     clientSecret: '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',
+    endpointBase: 'https://daily-cloudcode-pa.googleapis.com',
+    userAgent: `antigravity/1.11.5 ${platform()}/${arch()}`,
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
@@ -186,6 +194,47 @@ export const OAUTH_CONFIG = {
         'https://www.googleapis.com/auth/experimentsandconfigs'
     ]
 };
+
+// Gemini CLI OAuth configuration (from go_code/types.go)
+export const GEMINI_CLI_OAUTH_CONFIG = {
+    clientId: '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com',
+    clientSecret: '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',
+    endpointBase: 'https://cloudcode-pa.googleapis.com',
+    userAgent: 'google-api-nodejs-client/9.15.1',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    userInfoUrl: 'https://www.googleapis.com/oauth2/v1/userinfo',
+    callbackPort: 51121,
+    scopes: [
+        'https://www.googleapis.com/auth/cloud-platform',
+        'https://www.googleapis.com/auth/userinfo.email'
+    ]
+};
+
+// Backward compatibility: OAUTH_CONFIG defaults to Antigravity
+export const OAUTH_CONFIG = ANTIGRAVITY_OAUTH_CONFIG;
+
+/**
+ * Get OAuth configuration by auth type
+ * @param {string} authType - 'antigravity' or 'gemini-cli'
+ * @returns {Object} OAuth configuration object
+ */
+export function getOAuthConfig(authType) {
+    return authType === AUTH_TYPES.GEMINI_CLI
+        ? GEMINI_CLI_OAUTH_CONFIG
+        : ANTIGRAVITY_OAUTH_CONFIG;
+}
+
+/**
+ * Get redirect URI for OAuth callback
+ * @param {string} authType - 'antigravity' or 'gemini-cli'
+ * @returns {string} OAuth redirect URI
+ */
+export function getOAuthRedirectUri(authType) {
+    const config = getOAuthConfig(authType);
+    return `http://localhost:${config.callbackPort}/oauth-callback`;
+}
+
 export const OAUTH_REDIRECT_URI = `http://localhost:${OAUTH_CONFIG.callbackPort}/oauth-callback`;
 
 // Minimal Antigravity system instruction (from CLIProxyAPI)

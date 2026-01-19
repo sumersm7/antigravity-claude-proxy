@@ -278,11 +278,11 @@ When you add multiple accounts, the proxy intelligently distributes requests acr
 
 Choose a strategy based on your needs:
 
-| Strategy | Best For | Description |
-| --- | --- | --- |
-| **Hybrid** (Default) | Most users | Smart selection combining health score, token bucket rate limiting, and LRU freshness |
-| **Sticky** | Prompt caching | Stays on the same account to maximize cache hits, switches only when rate-limited |
-| **Round-Robin** | Even distribution | Cycles through accounts sequentially for balanced load |
+| Strategy             | Best For          | Description                                                                           |
+| -------------------- | ----------------- | ------------------------------------------------------------------------------------- |
+| **Hybrid** (Default) | Most users        | Smart selection combining health score, token bucket rate limiting, and LRU freshness |
+| **Sticky**           | Prompt caching    | Stays on the same account to maximize cache hits, switches only when rate-limited     |
+| **Round-Robin**      | Even distribution | Cycles through accounts sequentially for balanced load                                |
 
 **Configure via CLI:**
 
@@ -560,6 +560,34 @@ See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation, including:
 - Frontend architecture (Alpine.js + Tailwind)
 - Service layer patterns (`ErrorHandler.withLoading`, `AccountActions`)
 - Dashboard module documentation
+
+---
+
+## Changelog
+
+### v1.3.0 (2026-01-19)
+**Dual OAuth Authentication**
+- Added Gemini CLI OAuth support alongside Antigravity OAuth
+- New auth type selector in "Add Account" modal (ANTIGRAVITY / GEMINI CLI)
+- Same email can now have separate accounts with different auth types
+- AUTH TYPE column in accounts table with visual badges
+- Each auth type uses its own OAuth client, endpoints, and user agent
+- Existing accounts auto-migrate to 'antigravity' type
+
+### v1.2.6
+- Account selection strategies (Sticky, Round-Robin, Hybrid)
+- WebUI password protection
+- Improved quota tracking and rate limit handling
+
+### v1.2.0
+- Multi-account support with load balancing
+- WebUI dashboard with real-time quota visualization
+- Claude CLI configuration editor
+
+### v1.0.0
+- Initial release with Antigravity Cloud Code integration
+- Anthropic API compatibility for Claude Code CLI
+- Streaming and thinking mode support
 
 ---
 

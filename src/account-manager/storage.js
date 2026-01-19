@@ -26,6 +26,7 @@ export async function loadAccounts(configPath = ACCOUNT_CONFIG_PATH) {
 
         const accounts = (config.accounts || []).map(acc => ({
             ...acc,
+            authType: acc.authType || 'antigravity', // Default to antigravity for migration
             lastUsed: acc.lastUsed || null,
             enabled: acc.enabled !== false, // Default to true if not specified
             // Reset invalid flag on startup - give accounts a fresh chance to refresh
@@ -110,6 +111,7 @@ export async function saveAccounts(configPath, accounts, settings, activeIndex) 
         const config = {
             accounts: accounts.map(acc => ({
                 email: acc.email,
+                authType: acc.authType || 'antigravity', // Persist auth type
                 source: acc.source,
                 enabled: acc.enabled !== false, // Persist enabled state
                 dbPath: acc.dbPath || null,

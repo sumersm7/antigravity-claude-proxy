@@ -1,8 +1,8 @@
 /**
- * Google OAuth with PKCE for Antigravity
+ * Google OAuth with PKCE for Antigravity and Gemini CLI
  *
- * Implements the same OAuth flow as opencode-antigravity-auth
- * to obtain refresh tokens for multiple Google accounts.
+ * Implements dual OAuth flow supporting both Antigravity and Gemini CLI auth types.
+ * Uses PKCE to obtain refresh tokens for multiple Google accounts.
  * Uses a local callback server to automatically capture the auth code.
  */
 
@@ -11,6 +11,9 @@ import http from 'http';
 import {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     LOAD_CODE_ASSIST_HEADERS,
+    AUTH_TYPES,
+    getOAuthConfig,
+    getOAuthRedirectUri,
     OAUTH_CONFIG,
     OAUTH_REDIRECT_URI
 } from '../constants.js';
@@ -33,18 +36,20 @@ function generatePKCE() {
  * Generate authorization URL for Google OAuth
  * Returns the URL and the PKCE verifier (needed for token exchange)
  *
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @param {string} [customRedirectUri] - Optional custom redirect URI (e.g. for WebUI)
- * @returns {{url: string, verifier: string, state: string}} Auth URL and PKCE data
+ * @returns {{url: string, verifier: string, state: string, authType: string}} Auth URL and PKCE data
  */
-export function getAuthorizationUrl(customRedirectUri = null) {
+export function getAuthorizationUrl(authType = AUTH_TYPES.ANTIGRAVITY, customRedirectUri = null) {
+    const config = getOAuthConfig(authType);
     const { verifier, challenge } = generatePKCE();
     const state = crypto.randomBytes(16).toString('hex');
 
     const params = new URLSearchParams({
-        client_id: OAUTH_CONFIG.clientId,
-        redirect_uri: customRedirectUri || OAUTH_REDIRECT_URI,
+        client_id: config.clientId,
+        redirect_uri: customRedirectUri || getOAuthRedirectUri(authType),
         response_type: 'code',
-        scope: OAUTH_CONFIG.scopes.join(' '),
+        scope: config.scopes.join(' '),
         access_type: 'offline',
         prompt: 'consent',
         code_challenge: challenge,
@@ -53,9 +58,10 @@ export function getAuthorizationUrl(customRedirectUri = null) {
     });
 
     return {
-        url: `${OAUTH_CONFIG.authUrl}?${params.toString()}`,
+        url: `${config.authUrl}?${params.toString()}`,
         verifier,
-        state
+        state,
+        authType
     };
 }
 
@@ -225,21 +231,23 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
  *
  * @param {string} code - Authorization code from OAuth callback
  * @param {string} verifier - PKCE code verifier
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>} OAuth tokens
  */
-export async function exchangeCode(code, verifier) {
-    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+export async function exchangeCode(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const config = getOAuthConfig(authType);
+    const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
             code: code,
             code_verifier: verifier,
             grant_type: 'authorization_code',
-            redirect_uri: OAUTH_REDIRECT_URI
+            redirect_uri: getOAuthRedirectUri(authType)
         })
     });
 
@@ -256,7 +264,7 @@ export async function exchangeCode(code, verifier) {
         throw new Error('No access token received');
     }
 
-    logger.info(`[OAuth] Token exchange successful, access_token length: ${tokens.access_token?.length}`);
+    logger.info(`[OAuth] Token exchange successful for ${authType}, access_token length: ${tokens.access_token?.length}`);
 
     return {
         accessToken: tokens.access_token,
@@ -269,17 +277,19 @@ export async function exchangeCode(code, verifier) {
  * Refresh access token using refresh token
  *
  * @param {string} refreshToken - OAuth refresh token
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{accessToken: string, expiresIn: number}>} New access token
  */
-export async function refreshAccessToken(refreshToken) {
-    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+export async function refreshAccessToken(refreshToken, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const config = getOAuthConfig(authType);
+    const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
             refresh_token: refreshToken,
             grant_type: 'refresh_token'
         })
@@ -301,10 +311,12 @@ export async function refreshAccessToken(refreshToken) {
  * Get user email from access token
  *
  * @param {string} accessToken - OAuth access token
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<string>} User's email address
  */
-export async function getUserEmail(accessToken) {
-    const response = await fetch(OAUTH_CONFIG.userInfoUrl, {
+export async function getUserEmail(accessToken, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const config = getOAuthConfig(authType);
+    const response = await fetch(config.userInfoUrl, {
         headers: {
             'Authorization': `Bearer ${accessToken}`
         }
@@ -324,18 +336,26 @@ export async function getUserEmail(accessToken) {
  * Discover project ID for the authenticated user
  *
  * @param {string} accessToken - OAuth access token
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<string|null>} Project ID or null if not found
  */
-export async function discoverProjectId(accessToken) {
+export async function discoverProjectId(accessToken, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const config = getOAuthConfig(authType);
     let loadCodeAssistData = null;
 
-    for (const endpoint of ANTIGRAVITY_ENDPOINT_FALLBACKS) {
+    // Use auth-type-specific endpoint, with fallback to ANTIGRAVITY_ENDPOINT_FALLBACKS
+    const endpoints = config.endpointBase
+        ? [config.endpointBase, ...ANTIGRAVITY_ENDPOINT_FALLBACKS.filter(e => e !== config.endpointBase)]
+        : ANTIGRAVITY_ENDPOINT_FALLBACKS;
+
+    for (const endpoint of endpoints) {
         try {
             const response = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
+                    'User-Agent': config.userAgent,
                     ...LOAD_CODE_ASSIST_HEADERS
                 },
                 body: JSON.stringify({
@@ -360,7 +380,7 @@ export async function discoverProjectId(accessToken) {
             }
 
             // No project found - try to onboard
-            logger.info('[OAuth] No project in loadCodeAssist response, attempting onboardUser...');
+            logger.info(`[OAuth] No project in loadCodeAssist response for ${authType}, attempting onboardUser...`);
             break;
         } catch (error) {
             logger.warn(`[OAuth] Project discovery failed at ${endpoint}:`, error.message);
@@ -387,23 +407,25 @@ export async function discoverProjectId(accessToken) {
  *
  * @param {string} code - Authorization code from OAuth callback
  * @param {string} verifier - PKCE code verifier
- * @returns {Promise<{email: string, refreshToken: string, accessToken: string, projectId: string|null}>} Complete account info
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
+ * @returns {Promise<{email: string, refreshToken: string, accessToken: string, projectId: string|null, authType: string}>} Complete account info
  */
-export async function completeOAuthFlow(code, verifier) {
+export async function completeOAuthFlow(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
     // Exchange code for tokens
-    const tokens = await exchangeCode(code, verifier);
+    const tokens = await exchangeCode(code, verifier, authType);
 
     // Get user email
-    const email = await getUserEmail(tokens.accessToken);
+    const email = await getUserEmail(tokens.accessToken, authType);
 
     // Discover project ID
-    const projectId = await discoverProjectId(tokens.accessToken);
+    const projectId = await discoverProjectId(tokens.accessToken, authType);
 
     return {
         email,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
-        projectId
+        projectId,
+        authType
     };
 }
 

@@ -419,6 +419,10 @@
   @apply status-pill bg-neon-purple/10 text-neon-purple border-neon-purple/30;
 }
 
+.status-pill-cyan {
+  @apply status-pill bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30;
+}
+
 .status-pill-ultra {
   @apply status-pill bg-yellow-500/10 text-yellow-400 border-yellow-500/30;
 }

@@ -40,7 +40,7 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
     if (account.source === 'oauth' && account.refreshToken) {
         // OAuth account - use refresh token to get new access token
         try {
-            const tokens = await refreshAccessToken(account.refreshToken);
+            const tokens = await refreshAccessToken(account.refreshToken, account.authType);
             token = tokens.accessToken;
             // Clear invalid flag on success
             if (account.isInvalid) {
