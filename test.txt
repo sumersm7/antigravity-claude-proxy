@@ -1,0 +1,30 @@
+ Stream error at https://cloudcode-pa.googleapis.com: 429 - [{
+  "error": {
+    "code": 429,
+    "message": "No capacity available for model gemini-2.5-pro on the server",
+    "errors": [
+      {
+        "message": "No capacity available for model gemini-2.5-pro on the server",
+        "domain": "global",
+        "reason": "rateLimitExceeded"
+      }
+    ],
+    "status": "RESOURCE_EXHAUSTED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "MODEL_CAPACITY_EXHAUSTED",
+        "domain": "cloudcode-pa.googleapis.com",
+        "metadata": {
+          "model": "gemini-2.5-pro"
+        }
+      }
+    ]
+  }
+}
+]
+[2026-01-19T12:31:21.497Z] [WARN] [CloudCode] Stream error at https://cloudcode-pa.googleapis.com: CAPACITY_RETRY_DELAY_MS is not defined
+[2026-01-19T12:31:21.499Z] [ERROR] [API] Stream error: ReferenceError: CAPACITY_RETRY_DELAY_MS is not defined
+    at sendMessageStream (file:///D:/node/2026/antigravity-claude-proxy/src/cloudcode/streaming-handler.js:241:63)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///D:/node/2026/antigravity-claude-proxy/src/server.js:794:34

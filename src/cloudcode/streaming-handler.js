@@ -388,8 +388,13 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
                 if (lastError.is429) {
                     logger.warn(`[CloudCode] All endpoints rate-limited for ${account.email}`);
                     accountManager.markRateLimited(account.email, lastError.resetMs, model);
-                    throw new Error(`Rate limited: ${lastError.errorText}`);
+                    const err = new Error(`Rate limited: ${lastError.errorText}`);
+                    err.account = account.email;
+                    err.model = model;
+                    throw err;
                 }
+                lastError.account = account.email;
+                lastError.model = model;
                 throw lastError;
             }
 
@@ -435,6 +440,8 @@ export async function* sendMessageStream(anthropicRequest, accountManager, fallb
                 continue;
             }
 
+            error.account = account.email;
+            error.model = model;
             throw error;
         }
     }

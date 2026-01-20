@@ -10,6 +10,7 @@ const DEFAULT_CONFIG = {
     debug: false,
     logLevel: 'info',
     maxRetries: 5,
+    port: 8888,
     retryBaseMs: 1000,
     retryMaxMs: 30000,
     persistTokenCache: false,
@@ -64,13 +65,13 @@ function loadConfig() {
             const userConfig = JSON.parse(fileContent);
             config = { ...DEFAULT_CONFIG, ...userConfig };
         } else {
-             // Try looking in current dir for config.json as fallback
-             const localConfigPath = path.resolve('config.json');
-             if (fs.existsSync(localConfigPath)) {
-                 const fileContent = fs.readFileSync(localConfigPath, 'utf8');
-                 const userConfig = JSON.parse(fileContent);
-                 config = { ...DEFAULT_CONFIG, ...userConfig };
-             }
+            // Try looking in current dir for config.json as fallback
+            const localConfigPath = path.resolve('config.json');
+            if (fs.existsSync(localConfigPath)) {
+                const fileContent = fs.readFileSync(localConfigPath, 'utf8');
+                const userConfig = JSON.parse(fileContent);
+                config = { ...DEFAULT_CONFIG, ...userConfig };
+            }
         }
 
         // Environment overrides

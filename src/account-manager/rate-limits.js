@@ -133,6 +133,8 @@ export function markRateLimited(accounts, id, resetMs = null, modelId) {
         actualResetMs: actualResetMs             // Original duration from API
     };
 
+    const email = account.email;
+
     // Log appropriately based on duration
     if (actualResetMs > DEFAULT_COOLDOWN_MS) {
         logger.warn(

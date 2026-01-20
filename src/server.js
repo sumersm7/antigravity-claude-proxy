@@ -805,7 +805,12 @@ app.post('/v1/messages', async (req, res) => {
 
                 res.write(`event: error\ndata: ${JSON.stringify({
                     type: 'error',
-                    error: { type: errorType, message: errorMessage }
+                    error: {
+                        type: errorType,
+                        message: errorMessage,
+                        model: streamError.model,
+                        account: streamError.account
+                    }
                 })}\n\n`);
                 res.end();
             }
@@ -841,7 +846,12 @@ app.post('/v1/messages', async (req, res) => {
             logger.warn('[API] Headers already sent, writing error as SSE event');
             res.write(`event: error\ndata: ${JSON.stringify({
                 type: 'error',
-                error: { type: errorType, message: errorMessage }
+                error: {
+                    type: errorType,
+                    message: errorMessage,
+                    model: error.model,
+                    account: error.account
+                }
             })}\n\n`);
             res.end();
         } else {
@@ -849,7 +859,9 @@ app.post('/v1/messages', async (req, res) => {
                 type: 'error',
                 error: {
                     type: errorType,
-                    message: errorMessage
+                    message: errorMessage,
+                    model: error.model,
+                    account: error.account
                 }
             });
         }
