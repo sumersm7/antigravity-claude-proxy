@@ -16,6 +16,7 @@ const DEFAULT_CONFIG = {
     persistTokenCache: false,
     defaultCooldownMs: 10000,  // 10 seconds
     maxWaitBeforeErrorMs: 120000, // 2 minutes
+    maxAccounts: 10, // Maximum number of accounts allowed
     modelMapping: {},
     // Account selection strategy configuration
     accountSelection: {
@@ -34,6 +35,11 @@ const DEFAULT_CONFIG = {
             maxTokens: 50,            // Maximum token capacity
             tokensPerMinute: 6,       // Regeneration rate
             initialTokens: 50         // Starting tokens
+        },
+        quota: {
+            lowThreshold: 0.10,       // 10% - reduce score
+            criticalThreshold: 0.05,  // 5% - exclude from candidates
+            staleMs: 300000           // 5 min - max age of quota data to trust
         }
     }
 };

@@ -21,6 +21,34 @@ import { logger } from '../utils/logger.js';
 import { onboardUser, getDefaultTierId } from '../account-manager/onboarding.js';
 
 /**
+ * Parse refresh token parts (aligned with opencode-antigravity-auth)
+ * Format: refreshToken|projectId|managedProjectId
+ *
+ * @param {string} refresh - Composite refresh token string
+ * @returns {{refreshToken: string, projectId: string|undefined, managedProjectId: string|undefined}}
+ */
+export function parseRefreshParts(refresh) {
+    const [refreshToken = '', projectId = '', managedProjectId = ''] = (refresh ?? '').split('|');
+    return {
+        refreshToken,
+        projectId: projectId || undefined,
+        managedProjectId: managedProjectId || undefined,
+    };
+}
+
+/**
+ * Format refresh token parts back into composite string
+ *
+ * @param {{refreshToken: string, projectId?: string|undefined, managedProjectId?: string|undefined}} parts
+ * @returns {string} Composite refresh token
+ */
+export function formatRefreshParts(parts) {
+    const projectSegment = parts.projectId ?? '';
+    const base = `${parts.refreshToken}|${projectSegment}`;
+    return parts.managedProjectId ? `${base}|${parts.managedProjectId}` : base;
+}
+
+/**
  * Generate PKCE code verifier and challenge
  */
 function generatePKCE() {
@@ -275,13 +303,18 @@ export async function exchangeCode(code, verifier, authType = AUTH_TYPES.ANTIGRA
 
 /**
  * Refresh access token using refresh token
+ * Handles composite refresh tokens (refreshToken|projectId|managedProjectId)
  *
- * @param {string} refreshToken - OAuth refresh token
+<<<<<<< HEAD
+ * @param {string} refreshTokenInput - OAuth refresh token (may be composite)
  * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{accessToken: string, expiresIn: number}>} New access token
  */
-export async function refreshAccessToken(refreshToken, authType = AUTH_TYPES.ANTIGRAVITY) {
+export async function refreshAccessToken(refreshTokenInput, authType = AUTH_TYPES.ANTIGRAVITY) {
+    // Parse the composite refresh token to extract the actual OAuth token
+    const parts = parseRefreshParts(refreshTokenInput);
     const config = getOAuthConfig(authType);
+
     const response = await fetch(config.tokenUrl, {
         method: 'POST',
         headers: {
@@ -290,7 +323,7 @@ export async function refreshAccessToken(refreshToken, authType = AUTH_TYPES.ANT
         body: new URLSearchParams({
             client_id: config.clientId,
             client_secret: config.clientSecret,
-            refresh_token: refreshToken,
+            refresh_token: parts.refreshToken,
             grant_type: 'refresh_token'
         })
     });
@@ -430,6 +463,8 @@ export async function completeOAuthFlow(code, verifier, authType = AUTH_TYPES.AN
 }
 
 export default {
+    parseRefreshParts,
+    formatRefreshParts,
     getAuthorizationUrl,
     extractCodeFromInput,
     startCallbackServer,
