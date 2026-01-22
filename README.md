@@ -168,8 +168,8 @@ Or to use Gemini models:
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "test",
     "ANTHROPIC_BASE_URL": "http://localhost:8080",
-    "ANTHROPIC_MODEL": "gemini-3-pro-high[1m]",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemini-3-pro-high[1m]",
+    "ANTHROPIC_MODEL": "gemini-3-pro[1m]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemini-3-pro[1m]",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gemini-3-flash[1m]",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemini-2.5-flash-lite[1m]",
     "CLAUDE_CODE_SUBAGENT_MODEL": "gemini-3-flash[1m]",
@@ -260,11 +260,11 @@ Then run `claude` for official API or `claude-antigravity` for this proxy.
 
 ### Gemini Models
 
-| Model ID            | Description                     |
-| ------------------- | ------------------------------- |
-| `gemini-3-flash`    | Gemini 3 Flash with thinking    |
-| `gemini-3-pro-low`  | Gemini 3 Pro Low with thinking  |
-| `gemini-3-pro-high` | Gemini 3 Pro High with thinking |
+| Model ID           | Description                    |
+| ------------------ | ------------------------------ |
+| `gemini-3-flash`   | Gemini 3 Flash with thinking   |
+| `gemini-3-pro-low` | Gemini 3 Pro Low with thinking |
+| `gemini-3-pro`     | Gemini 3 Pro with thinking     |
 
 Gemini models include full thinking support with `thoughtSignature` handling for multi-turn conversations.
 

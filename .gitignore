@@ -33,3 +33,5 @@ tests/utils/*.jpeg
 # Build output
 dist/
 build/
+
+go_code/

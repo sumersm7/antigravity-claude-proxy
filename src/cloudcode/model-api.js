@@ -128,6 +128,8 @@ export async function fetchAvailableModels(token, projectId = null, authType = A
             models: {
                 'gemini-3-flash': { displayName: 'Gemini 3 Flash', quotaInfo: { remainingFraction: null } },
                 'gemini-3-pro-high': { displayName: 'Gemini 3 Pro High', quotaInfo: { remainingFraction: null } },
+                'gemini-3-pro': { displayName: 'Gemini 3 Pro', quotaInfo: { remainingFraction: null } },
+                'gemini-3-pro-preview': { displayName: 'Gemini 3 Pro Preview', quotaInfo: { remainingFraction: null } },
                 'gemini-2.5-flash': { displayName: 'Gemini 2.5 Flash', quotaInfo: { remainingFraction: null } },
                 'gemini-2.5-pro': { displayName: 'Gemini 2.5 Pro', quotaInfo: { remainingFraction: null } },
                 'claude-3-5-sonnet-v2': { displayName: 'Claude 3.5 Sonnet v2', quotaInfo: { remainingFraction: null } }
