@@ -1,4 +1,3 @@
-// ... (imports remain the same)
 import {
     ANTIGRAVITY_HEADERS,
     ANTIGRAVITY_SYSTEM_INSTRUCTION,
@@ -9,6 +8,7 @@ import {
 } from '../constants.js';
 import { convertAnthropicToGoogle } from '../format/index.js';
 import { deriveSessionId } from './session-manager.js';
+import { buildFingerprintHeaders } from '../fingerprint/index.js';
 // ...
 
 /**
@@ -71,9 +71,10 @@ export function buildCloudCodeRequest(anthropicRequest, projectId, authType) {
  * @param {string} model - Model name
  * @param {string} accept - Accept header value (default: 'application/json')
  * @param {string} authType - The authentication type (antigravity or gemini-cli)
+ * @param {Object} fingerprint - Optional device fingerprint object
  * @returns {Object} Headers object
  */
-export function buildHeaders(token, model, accept = 'application/json', authType) {
+export function buildHeaders(token, model, accept = 'application/json', authType, fingerprint = null) {
     let baseHeaders = ANTIGRAVITY_HEADERS;
 
     if (authType === AUTH_TYPES.GEMINI_CLI) {
@@ -82,10 +83,14 @@ export function buildHeaders(token, model, accept = 'application/json', authType
         };
     }
 
+    // Add fingerprint headers if provided (these override base headers intentionally)
+    const fingerprintHeaders = fingerprint ? buildFingerprintHeaders(fingerprint) : {};
+
     const headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...baseHeaders
+        ...baseHeaders,
+        ...fingerprintHeaders
     };
 
     const modelFamily = getModelFamily(model);

@@ -10,6 +10,7 @@ import { dirname } from 'path';
 import { ACCOUNT_CONFIG_PATH } from '../constants.js';
 import { getAuthStatus } from '../auth/database.js';
 import { logger } from '../utils/logger.js';
+import { generateFingerprint } from '../fingerprint/index.js';
 
 /**
  * Load accounts from the config file
@@ -24,21 +25,25 @@ export async function loadAccounts(configPath = ACCOUNT_CONFIG_PATH) {
         const configData = await readFile(configPath, 'utf-8');
         const config = JSON.parse(configData);
 
-        const accounts = (config.accounts || []).map(acc => ({
-            ...acc,
-            authType: acc.authType || 'antigravity', // Default to antigravity for migration
-            // Generate stable ID from email and authType if not present
-            id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`,
-            lastUsed: acc.lastUsed || null,
-            enabled: acc.enabled !== false, // Default to true if not specified
-            // Reset invalid flag on startup - give accounts a fresh chance to refresh
-            isInvalid: false,
-            invalidReason: null,
-            modelRateLimits: acc.modelRateLimits || {},
-            // New fields for subscription and quota tracking
-            subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
-            quota: acc.quota || { models: {}, lastChecked: null }
-        }));
+        const accounts = (config.accounts || []).map(acc => {
+            const hasFingerprint = acc.fingerprint && acc.fingerprint.deviceId;
+            return {
+                ...acc,
+                authType: acc.authType || 'antigravity', // Default to antigravity for migration
+                // Generate stable ID from email and authType if not present
+                id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`,
+                lastUsed: acc.lastUsed || null,
+                enabled: acc.enabled !== false, // Default to true if not specified
+                // Reset invalid flag on startup - give accounts a fresh chance to refresh
+                isInvalid: false,
+                invalidReason: null,
+                modelRateLimits: acc.modelRateLimits || {},
+                // New fields for subscription and quota tracking
+                subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
+                quota: acc.quota || { models: {}, lastChecked: null },
+                fingerprint: hasFingerprint ? acc.fingerprint : generateFingerprint()
+            };
+        });
 
         const settings = config.settings || {};
         let activeIndex = config.activeIndex || 0;
@@ -77,7 +82,8 @@ export function loadDefaultAccount(dbPath) {
                 id: `${authData.email || 'default@antigravity'}:database`,
                 source: 'database',
                 lastUsed: null,
-                modelRateLimits: {}
+                modelRateLimits: {},
+                fingerprint: generateFingerprint()
             };
 
             const tokenCache = new Map();
@@ -129,7 +135,8 @@ export async function saveAccounts(configPath, accounts, settings, activeIndex) 
                 lastUsed: acc.lastUsed,
                 // Persist subscription and quota data
                 subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
-                quota: acc.quota || { models: {}, lastChecked: null }
+                quota: acc.quota || { models: {}, lastChecked: null },
+                fingerprint: acc.fingerprint || undefined
             })),
             settings: settings,
             activeIndex: activeIndex
