@@ -24,7 +24,6 @@ import {
     BACKOFF_BY_ERROR_TYPE,
     QUOTA_EXHAUSTED_BACKOFF_TIERS_MS,
     MIN_BACKOFF_MS,
-    isThinkingModel
 } from '../constants.js';
 import { convertGoogleToAnthropic } from '../format/index.js';
 import { isRateLimitError, isAuthError } from '../errors.js';

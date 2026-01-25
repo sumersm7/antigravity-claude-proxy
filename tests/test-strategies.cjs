@@ -736,6 +736,9 @@ async function runTests() {
         strategy.selectAccount(accounts, 'model');
         const tracker = strategy.getTokenBucketTracker();
         assertEqual(tracker.getTokens(accounts[0].email), 9, 'Token should be consumed');
+
+        // const tokens = tracker.getTokens(accounts[0].email);
+        // assertWithin(tokens, 9.0, 9.1, 'Token should be consumed (approx 9)');
     });
 
     test('HybridStrategy: onSuccess increases health', () => {
