@@ -6,19 +6,19 @@
  * Uses a local callback server to automatically capture the auth code.
  */
 
-import crypto from 'crypto';
-import http from 'http';
+import crypto from "crypto";
+import http from "http";
 import {
-    ANTIGRAVITY_ENDPOINT_FALLBACKS,
-    LOAD_CODE_ASSIST_HEADERS,
-    AUTH_TYPES,
-    getOAuthConfig,
-    getOAuthRedirectUri,
-    OAUTH_CONFIG,
-    OAUTH_REDIRECT_URI
-} from '../constants.js';
-import { logger } from '../utils/logger.js';
-import { onboardUser, getDefaultTierId } from '../account-manager/onboarding.js';
+  ANTIGRAVITY_ENDPOINT_FALLBACKS,
+  LOAD_CODE_ASSIST_HEADERS,
+  AUTH_TYPES,
+  getOAuthConfig,
+  getOAuthRedirectUri,
+  OAUTH_CONFIG,
+  OAUTH_REDIRECT_URI,
+} from "../constants.js";
+import { logger } from "../utils/logger.js";
+import { onboardUser, getDefaultTierId } from "../account-manager/onboarding.js";
 
 /**
  * Parse refresh token parts (aligned with opencode-antigravity-auth)
@@ -28,12 +28,12 @@ import { onboardUser, getDefaultTierId } from '../account-manager/onboarding.js'
  * @returns {{refreshToken: string, projectId: string|undefined, managedProjectId: string|undefined}}
  */
 export function parseRefreshParts(refresh) {
-    const [refreshToken = '', projectId = '', managedProjectId = ''] = (refresh ?? '').split('|');
-    return {
-        refreshToken,
-        projectId: projectId || undefined,
-        managedProjectId: managedProjectId || undefined,
-    };
+  const [refreshToken = "", projectId = "", managedProjectId = ""] = (refresh ?? "").split("|");
+  return {
+    refreshToken,
+    projectId: projectId || undefined,
+    managedProjectId: managedProjectId || undefined,
+  };
 }
 
 /**
@@ -43,21 +43,18 @@ export function parseRefreshParts(refresh) {
  * @returns {string} Composite refresh token
  */
 export function formatRefreshParts(parts) {
-    const projectSegment = parts.projectId ?? '';
-    const base = `${parts.refreshToken}|${projectSegment}`;
-    return parts.managedProjectId ? `${base}|${parts.managedProjectId}` : base;
+  const projectSegment = parts.projectId ?? "";
+  const base = `${parts.refreshToken}|${projectSegment}`;
+  return parts.managedProjectId ? `${base}|${parts.managedProjectId}` : base;
 }
 
 /**
  * Generate PKCE code verifier and challenge
  */
 function generatePKCE() {
-    const verifier = crypto.randomBytes(32).toString('base64url');
-    const challenge = crypto
-        .createHash('sha256')
-        .update(verifier)
-        .digest('base64url');
-    return { verifier, challenge };
+  const verifier = crypto.randomBytes(32).toString("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
 }
 
 /**
@@ -69,28 +66,28 @@ function generatePKCE() {
  * @returns {{url: string, verifier: string, state: string, authType: string}} Auth URL and PKCE data
  */
 export function getAuthorizationUrl(authType = AUTH_TYPES.ANTIGRAVITY, customRedirectUri = null) {
-    const config = getOAuthConfig(authType);
-    const { verifier, challenge } = generatePKCE();
-    const state = crypto.randomBytes(16).toString('hex');
+  const config = getOAuthConfig(authType);
+  const { verifier, challenge } = generatePKCE();
+  const state = crypto.randomBytes(16).toString("hex");
 
-    const params = new URLSearchParams({
-        client_id: config.clientId,
-        redirect_uri: customRedirectUri || getOAuthRedirectUri(authType),
-        response_type: 'code',
-        scope: config.scopes.join(' '),
-        access_type: 'offline',
-        prompt: 'consent',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: state
-    });
+  const params = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: customRedirectUri || getOAuthRedirectUri(authType),
+    response_type: "code",
+    scope: config.scopes.join(" "),
+    access_type: "offline",
+    prompt: "consent",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: state,
+  });
 
-    return {
-        url: `${config.authUrl}?${params.toString()}`,
-        verifier,
-        state,
-        authType
-    };
+  return {
+    url: `${config.authUrl}?${params.toString()}`,
+    verifier,
+    state,
+    authType,
+  };
 }
 
 /**
@@ -103,72 +100,76 @@ export function getAuthorizationUrl(authType = AUTH_TYPES.ANTIGRAVITY, customRed
  * @returns {{code: string, state: string|null}} Extracted code and optional state
  */
 export function extractCodeFromInput(input) {
-    if (!input || typeof input !== 'string') {
-        throw new Error('No input provided');
+  if (!input || typeof input !== "string") {
+    throw new Error("No input provided");
+  }
+
+  const trimmed = input.trim();
+
+  // Check if it looks like a URL
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const url = new URL(trimmed);
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        throw new Error(`OAuth error: ${error}`);
+      }
+
+      if (!code) {
+        throw new Error("No authorization code found in URL");
+      }
+
+      return { code, state };
+    } catch (e) {
+      if (e.message.includes("OAuth error") || e.message.includes("No authorization code")) {
+        throw e;
+      }
+      throw new Error("Invalid URL format");
     }
+  }
 
-    const trimmed = input.trim();
+  // Assume it's a raw code
+  // Google auth codes typically start with "4/" and are long
+  if (trimmed.length < 10) {
+    throw new Error("Input is too short to be a valid authorization code");
+  }
 
-    // Check if it looks like a URL
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        try {
-            const url = new URL(trimmed);
-            const code = url.searchParams.get('code');
-            const state = url.searchParams.get('state');
-            const error = url.searchParams.get('error');
-
-            if (error) {
-                throw new Error(`OAuth error: ${error}`);
-            }
-
-            if (!code) {
-                throw new Error('No authorization code found in URL');
-            }
-
-            return { code, state };
-        } catch (e) {
-            if (e.message.includes('OAuth error') || e.message.includes('No authorization code')) {
-                throw e;
-            }
-            throw new Error('Invalid URL format');
-        }
-    }
-
-    // Assume it's a raw code
-    // Google auth codes typically start with "4/" and are long
-    if (trimmed.length < 10) {
-        throw new Error('Input is too short to be a valid authorization code');
-    }
-
-    return { code: trimmed, state: null };
+  return { code: trimmed, state: null };
 }
 
 /**
  * Start a local server to receive the OAuth callback
- * Returns a promise that resolves with the authorization code
+ * Returns an object with a promise and an abort function
  *
  * @param {string} expectedState - Expected state parameter for CSRF protection
  * @param {number} timeoutMs - Timeout in milliseconds (default 120000)
- * @returns {Promise<string>} Authorization code from OAuth callback
+ * @returns {{promise: Promise<string>, abort: Function}} Object with promise and abort function
  */
 export function startCallbackServer(expectedState, timeoutMs = 120000) {
-    return new Promise((resolve, reject) => {
-        const server = http.createServer((req, res) => {
-            const url = new URL(req.url, `http://localhost:${OAUTH_CONFIG.callbackPort}`);
+  let server = null;
+  let timeoutId = null;
+  let isAborted = false;
 
-            if (url.pathname !== '/oauth-callback') {
-                res.writeHead(404);
-                res.end('Not found');
-                return;
-            }
+  const promise = new Promise((resolve, reject) => {
+    server = http.createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost:${OAUTH_CONFIG.callbackPort}`);
 
-            const code = url.searchParams.get('code');
-            const state = url.searchParams.get('state');
-            const error = url.searchParams.get('error');
+      if (url.pathname !== "/oauth-callback") {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
 
-            if (error) {
-                res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(`
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(`
                     <html>
                     <head><meta charset="UTF-8"><title>Authentication Failed</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center;">
@@ -178,14 +179,14 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
                     </body>
                     </html>
                 `);
-                server.close();
-                reject(new Error(`OAuth error: ${error}`));
-                return;
-            }
+        server.close();
+        reject(new Error(`OAuth error: ${error}`));
+        return;
+      }
 
-            if (state !== expectedState) {
-                res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(`
+      if (state !== expectedState) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(`
                     <html>
                     <head><meta charset="UTF-8"><title>Authentication Failed</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center;">
@@ -195,14 +196,14 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
                     </body>
                     </html>
                 `);
-                server.close();
-                reject(new Error('State mismatch'));
-                return;
-            }
+        server.close();
+        reject(new Error("State mismatch"));
+        return;
+      }
 
-            if (!code) {
-                res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(`
+      if (!code) {
+        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(`
                     <html>
                     <head><meta charset="UTF-8"><title>Authentication Failed</title></head>
                     <body style="font-family: system-ui; padding: 40px; text-align: center;">
@@ -212,14 +213,14 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
                     </body>
                     </html>
                 `);
-                server.close();
-                reject(new Error('No authorization code'));
-                return;
-            }
+        server.close();
+        reject(new Error("No authorization code"));
+        return;
+      }
 
-            // Success!
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(`
+      // Success!
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(`
                 <html>
                 <head><meta charset="UTF-8"><title>Authentication Successful</title></head>
                 <body style="font-family: system-ui; padding: 40px; text-align: center;">
@@ -230,28 +231,49 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
                 </html>
             `);
 
-            server.close();
-            resolve(code);
-        });
-
-        server.on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                reject(new Error(`Port ${OAUTH_CONFIG.callbackPort} is already in use. Close any other OAuth flows and try again.`));
-            } else {
-                reject(err);
-            }
-        });
-
-        server.listen(OAUTH_CONFIG.callbackPort, () => {
-            logger.info(`[OAuth] Callback server listening on port ${OAUTH_CONFIG.callbackPort}`);
-        });
-
-        // Timeout after specified duration
-        setTimeout(() => {
-            server.close();
-            reject(new Error('OAuth callback timeout - no response received'));
-        }, timeoutMs);
+      server.close();
+      resolve(code);
     });
+
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        reject(
+          new Error(
+            `Port ${OAUTH_CONFIG.callbackPort} is already in use. Close any other OAuth flows and try again.`,
+          ),
+        );
+      } else {
+        reject(err);
+      }
+    });
+
+    server.listen(OAUTH_CONFIG.callbackPort, () => {
+      logger.info(`[OAuth] Callback server listening on port ${OAUTH_CONFIG.callbackPort}`);
+    });
+
+    // Timeout after specified duration
+    timeoutId = setTimeout(() => {
+      if (!isAborted) {
+        server.close();
+        reject(new Error("OAuth callback timeout - no response received"));
+      }
+    }, timeoutMs);
+  });
+
+  // Abort function to clean up server when manual completion happens
+  const abort = () => {
+    if (isAborted) return;
+    isAborted = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (server) {
+      server.close();
+      logger.info("[OAuth] Callback server aborted (manual completion)");
+    }
+  };
+
+  return { promise, abort };
 }
 
 /**
@@ -263,81 +285,83 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
  * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>} OAuth tokens
  */
 export async function exchangeCode(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
-    const config = getOAuthConfig(authType);
-    const response = await fetch(config.tokenUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            code: code,
-            code_verifier: verifier,
-            grant_type: 'authorization_code',
-            redirect_uri: getOAuthRedirectUri(authType)
-        })
-    });
+  const config = getOAuthConfig(authType);
+  const response = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code: code,
+      code_verifier: verifier,
+      grant_type: "authorization_code",
+      redirect_uri: getOAuthRedirectUri(authType),
+    }),
+  });
 
-    if (!response.ok) {
-        const error = await response.text();
-        logger.error(`[OAuth] Token exchange failed: ${response.status} ${error}`);
-        throw new Error(`Token exchange failed: ${error}`);
-    }
+  if (!response.ok) {
+    const error = await response.text();
+    logger.error(`[OAuth] Token exchange failed: ${response.status} ${error}`);
+    throw new Error(`Token exchange failed: ${error}`);
+  }
 
-    const tokens = await response.json();
+  const tokens = await response.json();
 
-    if (!tokens.access_token) {
-        logger.error('[OAuth] No access token in response:', tokens);
-        throw new Error('No access token received');
-    }
+  if (!tokens.access_token) {
+    logger.error("[OAuth] No access token in response:", tokens);
+    throw new Error("No access token received");
+  }
 
-    logger.info(`[OAuth] Token exchange successful for ${authType}, access_token length: ${tokens.access_token?.length}`);
+  logger.info(
+    `[OAuth] Token exchange successful for ${authType}, access_token length: ${tokens.access_token?.length}`,
+  );
 
-    return {
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token,
-        expiresIn: tokens.expires_in
-    };
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresIn: tokens.expires_in,
+  };
 }
 
 /**
  * Refresh access token using refresh token
  * Handles composite refresh tokens (refreshToken|projectId|managedProjectId)
- *
-<<<<<<< HEAD
  * @param {string} refreshTokenInput - OAuth refresh token (may be composite)
- * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli')
+ * @param {string} [authType='antigravity'] - Auth type ('antigravity' or 'gemini-cli') *
+ *  @param {string} compositeRefresh - OAuth refresh token (may be composite)
  * @returns {Promise<{accessToken: string, expiresIn: number}>} New access token
  */
 export async function refreshAccessToken(refreshTokenInput, authType = AUTH_TYPES.ANTIGRAVITY) {
-    // Parse the composite refresh token to extract the actual OAuth token
-    const parts = parseRefreshParts(refreshTokenInput);
-    const config = getOAuthConfig(authType);
+  // Parse the composite refresh token to extract the actual OAuth token
+  const parts = parseRefreshParts(refreshTokenInput);
+  const config = getOAuthConfig(authType);
 
-    const response = await fetch(config.tokenUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            client_id: config.clientId,
-            client_secret: config.clientSecret,
-            refresh_token: parts.refreshToken,
-            grant_type: 'refresh_token'
-        })
-    });
+  const response = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: OAUTH_CONFIG.clientId,
+      client_secret: OAUTH_CONFIG.clientSecret,
+      refresh_token: parts.refreshToken, // Use the actual OAuth token
 
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Token refresh failed: ${error}`);
-    }
+      grant_type: "refresh_token",
+    }),
+  });
 
-    const tokens = await response.json();
-    return {
-        accessToken: tokens.access_token,
-        expiresIn: tokens.expires_in
-    };
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Token refresh failed: ${error}`);
+  }
+
+  const tokens = await response.json();
+  return {
+    accessToken: tokens.access_token,
+    expiresIn: tokens.expires_in,
+  };
 }
 
 /**
@@ -348,21 +372,21 @@ export async function refreshAccessToken(refreshTokenInput, authType = AUTH_TYPE
  * @returns {Promise<string>} User's email address
  */
 export async function getUserEmail(accessToken, authType = AUTH_TYPES.ANTIGRAVITY) {
-    const config = getOAuthConfig(authType);
-    const response = await fetch(config.userInfoUrl, {
-        headers: {
-            'Authorization': `Bearer ${accessToken}`
-        }
-    });
+  const config = getOAuthConfig(authType);
+  const response = await fetch(config.userInfoUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        logger.error(`[OAuth] getUserEmail failed: ${response.status} ${errorText}`);
-        throw new Error(`Failed to get user info: ${response.status}`);
-    }
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`[OAuth] getUserEmail failed: ${response.status} ${errorText}`);
+    throw new Error(`Failed to get user info: ${response.status}`);
+  }
 
-    const userInfo = await response.json();
-    return userInfo.email;
+  const userInfo = await response.json();
+  return userInfo.email;
 }
 
 /**
@@ -373,66 +397,66 @@ export async function getUserEmail(accessToken, authType = AUTH_TYPES.ANTIGRAVIT
  * @returns {Promise<string|null>} Project ID or null if not found
  */
 export async function discoverProjectId(accessToken, authType = AUTH_TYPES.ANTIGRAVITY) {
-    const config = getOAuthConfig(authType);
-    let loadCodeAssistData = null;
+  const config = getOAuthConfig(authType);
+  let loadCodeAssistData = null;
 
-    // Use auth-type-specific endpoint, with fallback to ANTIGRAVITY_ENDPOINT_FALLBACKS
-    const endpoints = config.endpointBase
-        ? [config.endpointBase, ...ANTIGRAVITY_ENDPOINT_FALLBACKS.filter(e => e !== config.endpointBase)]
-        : ANTIGRAVITY_ENDPOINT_FALLBACKS;
+  // Use auth-type-specific endpoint, with fallback to ANTIGRAVITY_ENDPOINT_FALLBACKS
+  const endpoints = config.endpointBase
+    ? [config.endpointBase, ...ANTIGRAVITY_ENDPOINT_FALLBACKS.filter((e) => e !== config.endpointBase)]
+    : ANTIGRAVITY_ENDPOINT_FALLBACKS;
 
-    for (const endpoint of endpoints) {
-        try {
-            const response = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                    'User-Agent': config.userAgent,
-                    ...LOAD_CODE_ASSIST_HEADERS
-                },
-                body: JSON.stringify({
-                    metadata: {
-                        ideType: 'IDE_UNSPECIFIED',
-                        platform: 'PLATFORM_UNSPECIFIED',
-                        pluginType: 'GEMINI'
-                    }
-                })
-            });
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": config.userAgent,
+          ...LOAD_CODE_ASSIST_HEADERS,
+        },
+        body: JSON.stringify({
+          metadata: {
+            ideType: "IDE_UNSPECIFIED",
+            platform: "PLATFORM_UNSPECIFIED",
+            pluginType: "GEMINI",
+          },
+        }),
+      });
 
-            if (!response.ok) continue;
+      if (!response.ok) continue;
 
-            const data = await response.json();
-            loadCodeAssistData = data;
+      const data = await response.json();
+      loadCodeAssistData = data;
 
-            if (typeof data.cloudaicompanionProject === 'string') {
-                return data.cloudaicompanionProject;
-            }
-            if (data.cloudaicompanionProject?.id) {
-                return data.cloudaicompanionProject.id;
-            }
+      if (typeof data.cloudaicompanionProject === "string") {
+        return data.cloudaicompanionProject;
+      }
+      if (data.cloudaicompanionProject?.id) {
+        return data.cloudaicompanionProject.id;
+      }
 
-            // No project found - try to onboard
-            logger.info(`[OAuth] No project in loadCodeAssist response for ${authType}, attempting onboardUser...`);
-            break;
-        } catch (error) {
-            logger.warn(`[OAuth] Project discovery failed at ${endpoint}:`, error.message);
-        }
+      // No project found - try to onboard
+      logger.info(`[OAuth] No project in loadCodeAssist response for ${authType}, attempting onboardUser...`);
+      break;
+    } catch (error) {
+      logger.warn(`[OAuth] Project discovery failed at ${endpoint}:`, error.message);
     }
+  }
 
-    // Try onboarding if we got a response but no project
-    if (loadCodeAssistData) {
-        const tierId = getDefaultTierId(loadCodeAssistData.allowedTiers) || 'FREE';
-        logger.info(`[OAuth] Onboarding user with tier: ${tierId}`);
+  // Try onboarding if we got a response but no project
+  if (loadCodeAssistData) {
+    const tierId = getDefaultTierId(loadCodeAssistData.allowedTiers) || "FREE";
+    logger.info(`[OAuth] Onboarding user with tier: ${tierId}`);
 
-        const onboardedProject = await onboardUser(accessToken, tierId);
-        if (onboardedProject) {
-            logger.success(`[OAuth] Successfully onboarded, project: ${onboardedProject}`);
-            return onboardedProject;
-        }
+    const onboardedProject = await onboardUser(accessToken, tierId);
+    if (onboardedProject) {
+      logger.success(`[OAuth] Successfully onboarded, project: ${onboardedProject}`);
+      return onboardedProject;
     }
+  }
 
-    return null;
+  return null;
 }
 
 /**
@@ -444,33 +468,33 @@ export async function discoverProjectId(accessToken, authType = AUTH_TYPES.ANTIG
  * @returns {Promise<{email: string, refreshToken: string, accessToken: string, projectId: string|null, authType: string}>} Complete account info
  */
 export async function completeOAuthFlow(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
-    // Exchange code for tokens
-    const tokens = await exchangeCode(code, verifier, authType);
+  // Exchange code for tokens
+  const tokens = await exchangeCode(code, verifier, authType);
 
-    // Get user email
-    const email = await getUserEmail(tokens.accessToken, authType);
+  // Get user email
+  const email = await getUserEmail(tokens.accessToken, authType);
 
-    // Discover project ID
-    const projectId = await discoverProjectId(tokens.accessToken, authType);
+  // Discover project ID
+  const projectId = await discoverProjectId(tokens.accessToken, authType);
 
-    return {
-        email,
-        refreshToken: tokens.refreshToken,
-        accessToken: tokens.accessToken,
-        projectId,
-        authType
-    };
+  return {
+    email,
+    refreshToken: tokens.refreshToken,
+    accessToken: tokens.accessToken,
+    projectId,
+    authType,
+  };
 }
 
 export default {
-    parseRefreshParts,
-    formatRefreshParts,
-    getAuthorizationUrl,
-    extractCodeFromInput,
-    startCallbackServer,
-    exchangeCode,
-    refreshAccessToken,
-    getUserEmail,
-    discoverProjectId,
-    completeOAuthFlow
+  parseRefreshParts,
+  formatRefreshParts,
+  getAuthorizationUrl,
+  extractCodeFromInput,
+  startCallbackServer,
+  exchangeCode,
+  refreshAccessToken,
+  getUserEmail,
+  discoverProjectId,
+  completeOAuthFlow,
 };
