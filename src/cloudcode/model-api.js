@@ -5,16 +5,24 @@
  */
 
 import {
-    ANTIGRAVITY_ENDPOINT_FALLBACKS,
-    ANTIGRAVITY_HEADERS,
-    LOAD_CODE_ASSIST_ENDPOINTS,
-    LOAD_CODE_ASSIST_HEADERS,
-    getModelFamily,
-    AUTH_TYPES,
-    GEMINI_CLI_OAUTH_CONFIG,
-    GEMINI_CLI_ENDPOINTS
-} from '../constants.js';
-import { logger } from '../utils/logger.js';
+  ANTIGRAVITY_ENDPOINT_FALLBACKS,
+  ANTIGRAVITY_HEADERS,
+  LOAD_CODE_ASSIST_ENDPOINTS,
+  LOAD_CODE_ASSIST_HEADERS,
+  getModelFamily,
+  AUTH_TYPES,
+  GEMINI_CLI_OAUTH_CONFIG,
+  GEMINI_CLI_ENDPOINTS,
+  MODEL_VALIDATION_CACHE_TTL_MS,
+} from "../constants.js";
+import { logger } from "../utils/logger.js";
+
+// Model validation cache
+const modelCache = {
+  validModels: new Set(),
+  lastFetched: 0,
+  fetchPromise: null, // Prevents concurrent fetches
+};
 
 /**
  * Check if a model is supported (Claude or Gemini)
@@ -22,8 +30,8 @@ import { logger } from '../utils/logger.js';
  * @returns {boolean} True if model is supported
  */
 function isSupportedModel(modelId) {
-    const family = getModelFamily(modelId);
-    return family === 'claude' || family === 'gemini';
+  const family = getModelFamily(modelId);
+  return family === "claude" || family === "gemini";
 }
 
 /**
@@ -35,25 +43,29 @@ function isSupportedModel(modelId) {
  * @returns {Promise<{object: string, data: Array<{id: string, object: string, created: number, owned_by: string, description: string}>}>} List of available models
  */
 export async function listModels(token, authType) {
-    const data = await fetchAvailableModels(token, null, authType);
-    if (!data || !data.models) {
-        return { object: 'list', data: [] };
-    }
+  const data = await fetchAvailableModels(token, null, authType);
+  if (!data || !data.models) {
+    return { object: "list", data: [] };
+  }
 
-    const modelList = Object.entries(data.models)
-        .filter(([modelId]) => isSupportedModel(modelId))
-        .map(([modelId, modelData]) => ({
-            id: modelId,
-            object: 'model',
-            created: Math.floor(Date.now() / 1000),
-            owned_by: 'anthropic',
-            description: modelData.displayName || modelId
-        }));
+  const modelList = Object.entries(data.models)
+    .filter(([modelId]) => isSupportedModel(modelId))
+    .map(([modelId, modelData]) => ({
+      id: modelId,
+      object: "model",
+      created: Math.floor(Date.now() / 1000),
+      owned_by: "anthropic",
+      description: modelData.displayName || modelId,
+    }));
 
-    return {
-        object: 'list',
-        data: modelList
-    };
+  // Warm the model validation cache
+  modelCache.validModels = new Set(modelList.map((m) => m.id));
+  modelCache.lastFetched = Date.now();
+
+  return {
+    object: "list",
+    data: modelList,
+  };
 }
 
 /**
@@ -66,78 +78,87 @@ export async function listModels(token, authType) {
  * @returns {Promise<Object>} Raw response from fetchAvailableModels API
  */
 export async function fetchAvailableModels(token, projectId = null, authType = AUTH_TYPES.ANTIGRAVITY) {
-    let baseHeaders = ANTIGRAVITY_HEADERS;
-    let endpoints = ANTIGRAVITY_ENDPOINT_FALLBACKS;
+  let baseHeaders = ANTIGRAVITY_HEADERS;
+  let endpoints = ANTIGRAVITY_ENDPOINT_FALLBACKS;
 
-    if (authType === AUTH_TYPES.GEMINI_CLI) {
-        baseHeaders = {
-            ...baseHeaders,
-            'User-Agent': GEMINI_CLI_OAUTH_CONFIG.userAgent
-        };
-        endpoints = GEMINI_CLI_ENDPOINTS;
-    }
-
-    const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...baseHeaders
+  if (authType === AUTH_TYPES.GEMINI_CLI) {
+    baseHeaders = {
+      ...baseHeaders,
+      "User-Agent": GEMINI_CLI_OAUTH_CONFIG.userAgent,
     };
+    endpoints = GEMINI_CLI_ENDPOINTS;
+  }
 
-    // Include project ID in body for accurate quota info (per Quotio implementation)
-    // For Gemini CLI, we don't send project ID as it seems to cause permission errors
-    const body = (projectId && authType !== AUTH_TYPES.GEMINI_CLI) ? { project: projectId } : {};
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...baseHeaders,
+  };
 
-    let lastError = null;
+  // Include project ID in body for accurate quota info (per Quotio implementation)
+  // For Gemini CLI, we don't send project ID as it seems to cause permission errors
+  const body = projectId && authType !== AUTH_TYPES.GEMINI_CLI ? { project: projectId } : {};
 
-    for (const endpoint of endpoints) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const url = `${endpoint}/v1internal:fetchAvailableModels`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        lastError = `${response.status} ${response.statusText}`;
         try {
-            const url = `${endpoint}/v1internal:fetchAvailableModels`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(body)
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                lastError = `${response.status} ${response.statusText}`;
-                try {
-                    const errorJson = JSON.parse(errorText);
-                    if (errorJson.error?.message) {
-                        lastError = errorJson.error.message;
-                    }
-                } catch (e) {
-                    lastError = `${response.status} - ${errorText.substring(0, 100)}`;
-                }
-                logger.warn(`[CloudCode] fetchAvailableModels error at ${endpoint}: ${lastError}`);
-                continue;
-            }
-
-            return await response.json();
-        } catch (error) {
-            lastError = error.message;
-            logger.warn(`[CloudCode] fetchAvailableModels failed at ${endpoint}:`, error.message);
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.message) {
+            lastError = errorJson.error.message;
+          }
+        } catch (e) {
+          lastError = `${response.status} - ${errorText.substring(0, 100)}`;
         }
-    }
+        logger.warn(`[CloudCode] fetchAvailableModels error at ${endpoint}: ${lastError}`);
+        continue;
+      }
 
-    // Fallback for Gemini CLI if permission denied (likely due to scope/API restrictions)
-    // Return hardcoded models so the account status is OK and models can be listed
-    if (authType === AUTH_TYPES.GEMINI_CLI && (lastError.includes('permission') || lastError.includes('PERMISSION_DENIED') || lastError.includes('403'))) {
-        logger.warn('[CloudCode] Gemini CLI permission denied for model list. Using fallback model list.');
-        return {
-            models: {
-                'gemini-3-flash': { displayName: 'Gemini 3 Flash', quotaInfo: { remainingFraction: null } },
-                'gemini-3-pro-high': { displayName: 'Gemini 3 Pro High', quotaInfo: { remainingFraction: null } },
-                'gemini-3-pro': { displayName: 'Gemini 3 Pro', quotaInfo: { remainingFraction: null } },
-                'gemini-3-pro-preview': { displayName: 'Gemini 3 Pro Preview', quotaInfo: { remainingFraction: null } },
-                'gemini-2.5-flash': { displayName: 'Gemini 2.5 Flash', quotaInfo: { remainingFraction: null } },
-                'gemini-2.5-pro': { displayName: 'Gemini 2.5 Pro', quotaInfo: { remainingFraction: null } },
-                'claude-3-5-sonnet-v2': { displayName: 'Claude 3.5 Sonnet v2', quotaInfo: { remainingFraction: null } }
-            }
-        };
+      return await response.json();
+    } catch (error) {
+      lastError = error.message;
+      logger.warn(`[CloudCode] fetchAvailableModels failed at ${endpoint}:`, error.message);
     }
+  }
 
-    throw new Error(lastError || 'Failed to fetch available models from all endpoints');
+  // Fallback for Gemini CLI if permission denied (likely due to scope/API restrictions)
+  // Return hardcoded models so the account status is OK and models can be listed
+  if (
+    authType === AUTH_TYPES.GEMINI_CLI &&
+    (lastError.includes("permission") || lastError.includes("PERMISSION_DENIED") || lastError.includes("403"))
+  ) {
+    logger.warn("[CloudCode] Gemini CLI permission denied for model list. Using fallback model list.");
+    return {
+      models: {
+        "gemini-3-flash": { displayName: "Gemini 3 Flash", quotaInfo: { remainingFraction: null } },
+        "gemini-3-pro-high": { displayName: "Gemini 3 Pro High", quotaInfo: { remainingFraction: null } },
+        "gemini-3-pro": { displayName: "Gemini 3 Pro", quotaInfo: { remainingFraction: null } },
+        "gemini-3-pro-preview": {
+          displayName: "Gemini 3 Pro Preview",
+          quotaInfo: { remainingFraction: null },
+        },
+        "gemini-2.5-flash": { displayName: "Gemini 2.5 Flash", quotaInfo: { remainingFraction: null } },
+        "gemini-2.5-pro": { displayName: "Gemini 2.5 Pro", quotaInfo: { remainingFraction: null } },
+        "claude-3-5-sonnet-v2": {
+          displayName: "Claude 3.5 Sonnet v2",
+          quotaInfo: { remainingFraction: null },
+        },
+      },
+    };
+  }
+
+  throw new Error(lastError || "Failed to fetch available models from all endpoints");
 }
 
 /**
@@ -150,24 +171,25 @@ export async function fetchAvailableModels(token, projectId = null, authType = A
  * @returns {Promise<Object>} Map of modelId -> { remainingFraction, resetTime }
  */
 export async function getModelQuotas(token, projectId = null, authType = AUTH_TYPES.ANTIGRAVITY) {
-    const data = await fetchAvailableModels(token, projectId, authType);
-    if (!data || !data.models) return {};
+  const data = await fetchAvailableModels(token, projectId, authType);
+  if (!data || !data.models) return {};
 
-    const quotas = {};
-    for (const [modelId, modelData] of Object.entries(data.models)) {
-        // Only include Claude and Gemini models
-        if (!isSupportedModel(modelId)) continue;
+  const quotas = {};
+  for (const [modelId, modelData] of Object.entries(data.models)) {
+    // Only include Claude and Gemini models
+    if (!isSupportedModel(modelId)) continue;
 
-        if (modelData.quotaInfo) {
-            quotas[modelId] = {
-                // When remainingFraction is missing but resetTime is present, quota is exhausted (0%)
-                remainingFraction: modelData.quotaInfo.remainingFraction ?? (modelData.quotaInfo.resetTime ? 0 : null),
-                resetTime: modelData.quotaInfo.resetTime ?? null
-            };
-        }
+    if (modelData.quotaInfo) {
+      quotas[modelId] = {
+        // When remainingFraction is missing but resetTime is present, quota is exhausted (0%)
+        remainingFraction:
+          modelData.quotaInfo.remainingFraction ?? (modelData.quotaInfo.resetTime ? 0 : null),
+        resetTime: modelData.quotaInfo.resetTime ?? null,
+      };
     }
+  }
 
-    return quotas;
+  return quotas;
 }
 
 /**
@@ -176,23 +198,23 @@ export async function getModelQuotas(token, projectId = null, authType = AUTH_TY
  * @returns {'free' | 'pro' | 'ultra' | 'unknown'} The subscription tier
  */
 export function parseTierId(tierId) {
-    if (!tierId) return 'unknown';
-    const lower = tierId.toLowerCase();
+  if (!tierId) return "unknown";
+  const lower = tierId.toLowerCase();
 
-    if (lower.includes('ultra')) {
-        return 'ultra';
-    }
-    if (lower === 'standard-tier') {
-        // standard-tier = "Gemini Code Assist" (paid, project-based)
-        return 'pro';
-    }
-    if (lower.includes('pro') || lower.includes('premium')) {
-        return 'pro';
-    }
-    if (lower === 'free-tier' || lower.includes('free')) {
-        return 'free';
-    }
-    return 'unknown';
+  if (lower.includes("ultra")) {
+    return "ultra";
+  }
+  if (lower === "standard-tier") {
+    // standard-tier = "Gemini Code Assist" (paid, project-based)
+    return "pro";
+  }
+  if (lower.includes("pro") || lower.includes("premium")) {
+    return "pro";
+  }
+  if (lower === "free-tier" || lower.includes("free")) {
+    return "free";
+  }
+  return "unknown";
 }
 
 /**
@@ -204,104 +226,176 @@ export function parseTierId(tierId) {
  * @returns {Promise<{tier: string, projectId: string|null}>} Subscription tier (free/pro/ultra) and project ID
  */
 export async function getSubscriptionTier(token, authType = AUTH_TYPES.ANTIGRAVITY) {
-    let baseHeaders = LOAD_CODE_ASSIST_HEADERS;
-    let endpoints = LOAD_CODE_ASSIST_ENDPOINTS;
+  let baseHeaders = LOAD_CODE_ASSIST_HEADERS;
+  let endpoints = LOAD_CODE_ASSIST_ENDPOINTS;
 
-    if (authType === AUTH_TYPES.GEMINI_CLI) {
-        baseHeaders = {
-            ...baseHeaders,
-            'User-Agent': GEMINI_CLI_OAUTH_CONFIG.userAgent
-        };
-        endpoints = GEMINI_CLI_ENDPOINTS;
-    }
-
-    const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...baseHeaders
+  if (authType === AUTH_TYPES.GEMINI_CLI) {
+    baseHeaders = {
+      ...baseHeaders,
+      "User-Agent": GEMINI_CLI_OAUTH_CONFIG.userAgent,
     };
+    endpoints = GEMINI_CLI_ENDPOINTS;
+  }
 
-    for (const endpoint of endpoints) {
-        try {
-            const url = `${endpoint}/v1internal:loadCodeAssist`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    metadata: {
-                        ideType: 'IDE_UNSPECIFIED',
-                        platform: 'PLATFORM_UNSPECIFIED',
-                        pluginType: 'GEMINI',
-                        duetProject: 'rising-fact-p41fc'
-                    }
-                })
-            });
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...baseHeaders,
+  };
 
-            if (!response.ok) {
-                logger.warn(`[CloudCode] loadCodeAssist error at ${endpoint}: ${response.status}`);
-                continue;
-            }
+  for (const endpoint of endpoints) {
+    try {
+      const url = `${endpoint}/v1internal:loadCodeAssist`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          metadata: {
+            ideType: "IDE_UNSPECIFIED",
+            platform: "PLATFORM_UNSPECIFIED",
+            pluginType: "GEMINI",
+            duetProject: "rising-fact-p41fc",
+          },
+        }),
+      });
 
-            const data = await response.json();
+      if (!response.ok) {
+        logger.warn(`[CloudCode] loadCodeAssist error at ${endpoint}: ${response.status}`);
+        continue;
+      }
 
-            // Debug: Log all tier-related fields from the response
-            logger.debug(`[CloudCode] loadCodeAssist tier data: paidTier=${JSON.stringify(data.paidTier)}, currentTier=${JSON.stringify(data.currentTier)}, allowedTiers=${JSON.stringify(data.allowedTiers?.map(t => ({ id: t?.id, isDefault: t?.isDefault })))}`);
+      const data = await response.json();
 
-            // Extract project ID
-            let projectId = null;
-            if (typeof data.cloudaicompanionProject === 'string') {
-                projectId = data.cloudaicompanionProject;
-            } else if (data.cloudaicompanionProject?.id) {
-                projectId = data.cloudaicompanionProject.id;
-            }
+      // Debug: Log all tier-related fields from the response
+      logger.debug(
+        `[CloudCode] loadCodeAssist tier data: paidTier=${JSON.stringify(data.paidTier)}, currentTier=${JSON.stringify(data.currentTier)}, allowedTiers=${JSON.stringify(data.allowedTiers?.map((t) => ({ id: t?.id, isDefault: t?.isDefault })))}`,
+      );
 
-            // Extract subscription tier
-            // Priority: paidTier > currentTier > allowedTiers
-            // - paidTier.id: "g1-pro-tier", "g1-ultra-tier" (Google One subscription)
-            // - currentTier.id: "standard-tier" (pro), "free-tier" (free)
-            // - allowedTiers: fallback when currentTier is missing
-            // Note: paidTier is sometimes missing from the response even for Pro accounts
-            let tier = 'unknown';
-            let tierId = null;
-            let tierSource = null;
+      // Extract project ID
+      let projectId = null;
+      if (typeof data.cloudaicompanionProject === "string") {
+        projectId = data.cloudaicompanionProject;
+      } else if (data.cloudaicompanionProject?.id) {
+        projectId = data.cloudaicompanionProject.id;
+      }
 
-            // 1. Check paidTier first (Google One AI subscription - most reliable)
-            if (data.paidTier?.id) {
-                tierId = data.paidTier.id;
-                tier = parseTierId(tierId);
-                tierSource = 'paidTier';
-            }
+      // Extract subscription tier
+      // Priority: paidTier > currentTier > allowedTiers
+      // - paidTier.id: "g1-pro-tier", "g1-ultra-tier" (Google One subscription)
+      // - currentTier.id: "standard-tier" (pro), "free-tier" (free)
+      // - allowedTiers: fallback when currentTier is missing
+      // Note: paidTier is sometimes missing from the response even for Pro accounts
+      let tier = "unknown";
+      let tierId = null;
+      let tierSource = null;
 
-            // 2. Fall back to currentTier if paidTier didn't give us a tier
-            if (tier === 'unknown' && data.currentTier?.id) {
-                tierId = data.currentTier.id;
-                tier = parseTierId(tierId);
-                tierSource = 'currentTier';
-            }
+      // 1. Check paidTier first (Google One AI subscription - most reliable)
+      if (data.paidTier?.id) {
+        tierId = data.paidTier.id;
+        tier = parseTierId(tierId);
+        tierSource = "paidTier";
+      }
 
-            // 3. Fall back to allowedTiers (find the default or first non-free tier)
-            if (tier === 'unknown' && Array.isArray(data.allowedTiers) && data.allowedTiers.length > 0) {
-                // First look for the default tier
-                let defaultTier = data.allowedTiers.find(t => t?.isDefault);
-                if (!defaultTier) {
-                    defaultTier = data.allowedTiers[0];
-                }
-                if (defaultTier?.id) {
-                    tierId = defaultTier.id;
-                    tier = parseTierId(tierId);
-                    tierSource = 'allowedTiers';
-                }
-            }
+      // 2. Fall back to currentTier if paidTier didn't give us a tier
+      if (tier === "unknown" && data.currentTier?.id) {
+        tierId = data.currentTier.id;
+        tier = parseTierId(tierId);
+        tierSource = "currentTier";
+      }
 
-            logger.debug(`[CloudCode] Subscription detected: ${tier} (tierId: ${tierId}, source: ${tierSource}), Project: ${projectId}`);
-
-            return { tier, projectId };
-        } catch (error) {
-            logger.warn(`[CloudCode] loadCodeAssist failed at ${endpoint}:`, error.message);
+      // 3. Fall back to allowedTiers (find the default or first non-free tier)
+      if (tier === "unknown" && Array.isArray(data.allowedTiers) && data.allowedTiers.length > 0) {
+        // First look for the default tier
+        let defaultTier = data.allowedTiers.find((t) => t?.isDefault);
+        if (!defaultTier) {
+          defaultTier = data.allowedTiers[0];
         }
+        if (defaultTier?.id) {
+          tierId = defaultTier.id;
+          tier = parseTierId(tierId);
+          tierSource = "allowedTiers";
+        }
+      }
+
+      logger.debug(
+        `[CloudCode] Subscription detected: ${tier} (tierId: ${tierId}, source: ${tierSource}), Project: ${projectId}`,
+      );
+
+      return { tier, projectId };
+    } catch (error) {
+      logger.warn(`[CloudCode] loadCodeAssist failed at ${endpoint}:`, error.message);
+    }
+  }
+
+  // Fallback: return default values if all endpoints fail
+  logger.warn("[CloudCode] Failed to detect subscription tier from all endpoints. Defaulting to free.");
+  return { tier: "free", projectId: null };
+}
+
+/**
+ * Populate the model validation cache
+ * @param {string} token - OAuth access token
+ * @param {string} [projectId] - Optional project ID
+ * @returns {Promise<void>}
+ */
+async function populateModelCache(token, projectId = null) {
+  const now = Date.now();
+
+  // Check if cache is fresh
+  if (modelCache.validModels.size > 0 && now - modelCache.lastFetched < MODEL_VALIDATION_CACHE_TTL_MS) {
+    return;
+  }
+
+  // If already fetching, wait for it
+  if (modelCache.fetchPromise) {
+    await modelCache.fetchPromise;
+    return;
+  }
+
+  // Start fetch
+  modelCache.fetchPromise = (async () => {
+    try {
+      const data = await fetchAvailableModels(token, projectId);
+      if (data && data.models) {
+        const validIds = Object.keys(data.models).filter((modelId) => isSupportedModel(modelId));
+        modelCache.validModels = new Set(validIds);
+        modelCache.lastFetched = Date.now();
+        logger.debug(`[CloudCode] Model cache populated with ${validIds.length} models`);
+      }
+    } catch (error) {
+      logger.warn(`[CloudCode] Failed to populate model cache: ${error.message}`);
+      // Don't throw - validation should degrade gracefully
+    } finally {
+      modelCache.fetchPromise = null;
+    }
+  })();
+
+  await modelCache.fetchPromise;
+}
+
+/**
+ * Check if a model ID is valid (exists in the available models list)
+ * Uses a cached model list with TTL-based refresh
+ * @param {string} modelId - Model ID to validate
+ * @param {string} token - OAuth access token for cache population
+ * @param {string} [projectId] - Optional project ID
+ * @returns {Promise<boolean>} True if model is valid
+ */
+export async function isValidModel(modelId, token, projectId = null) {
+  try {
+    // Populate cache if needed
+    await populateModelCache(token, projectId);
+
+    // If cache is populated, validate against it
+    if (modelCache.validModels.size > 0) {
+      return modelCache.validModels.has(modelId);
     }
 
-    // Fallback: return default values if all endpoints fail
-    logger.warn('[CloudCode] Failed to detect subscription tier from all endpoints. Defaulting to free.');
-    return { tier: 'free', projectId: null };
+    // Cache empty (fetch failed) - fail open, let API validate
+    return true;
+  } catch (error) {
+    logger.debug(`[CloudCode] Model validation error: ${error.message}`);
+    // Fail open - let the API validate
+    return true;
+  }
 }

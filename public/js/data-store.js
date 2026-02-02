@@ -13,6 +13,7 @@ document.addEventListener('alpine:init', () => {
         modelConfig: {}, // Model metadata (hidden, pinned, alias)
         quotaRows: [], // Filtered view
         usageHistory: {}, // Usage statistics history (from /account-limits?includeHistory=true)
+        globalQuotaThreshold: 0, // Global minimum quota threshold (fraction 0-0.99)
         maxAccounts: 10, // Maximum number of accounts allowed (from config)
         loading: false,
         initialLoad: true, // Track first load for skeleton screen
@@ -55,7 +56,7 @@ document.addEventListener('alpine:init', () => {
 
                     // Check TTL
                     if (data.timestamp && (Date.now() - data.timestamp > CACHE_TTL)) {
-                        console.log('Cache expired, skipping restoration');
+                        if (window.UILogger) window.UILogger.debug('Cache expired, skipping restoration');
                         localStorage.removeItem('ag_data_cache');
                         return;
                     }
@@ -70,11 +71,11 @@ document.addEventListener('alpine:init', () => {
                         // Don't show loading on initial load if we have cache
                         this.initialLoad = false;
                         this.computeQuotaRows();
-                        console.log('Restored data from cache');
+                        if (window.UILogger) window.UILogger.debug('Restored data from cache');
                     }
                 }
             } catch (e) {
-                console.warn('Failed to load cache', e);
+                if (window.UILogger) window.UILogger.debug('Failed to load cache', e.message);
             }
         },
 
@@ -89,7 +90,7 @@ document.addEventListener('alpine:init', () => {
                 };
                 localStorage.setItem('ag_data_cache', JSON.stringify(cacheData));
             } catch (e) {
-                console.warn('Failed to save cache', e);
+                if (window.UILogger) window.UILogger.debug('Failed to save cache', e.message);
             }
         },
 
@@ -116,6 +117,7 @@ document.addEventListener('alpine:init', () => {
                     this.models = data.models;
                 }
                 this.modelConfig = data.modelConfig || {};
+                this.globalQuotaThreshold = data.globalQuotaThreshold || 0;
 
                 // Store usage history if included (for dashboard)
                 if (data.history) {
@@ -127,6 +129,7 @@ document.addEventListener('alpine:init', () => {
 
                 this.lastUpdated = new Date().toLocaleTimeString();
             } catch (error) {
+                // Keep error logging for actual fetch failures
                 console.error('Fetch error:', error);
                 const store = Alpine.store('global');
                 store.showToast(store.t('connectionLost'), 'error');
@@ -235,9 +238,12 @@ document.addEventListener('alpine:init', () => {
                 let totalQuotaSum = 0;
                 let validAccountCount = 0;
                 let minResetTime = null;
+                let maxEffectiveThreshold = 0;
+                const globalThreshold = this.globalQuotaThreshold || 0;
 
                 this.accounts.forEach(acc => {
-                    if (this.filters.account !== 'all' && acc.id !== this.filters.account && acc.email !== this.filters.account) return;
+                    if (acc.enabled === false) return;
+                    if (this.filters.account !== 'all' && acc.email !== this.filters.account) return;
 
                     const limit = acc.limits?.[modelId];
                     if (!limit) return;
@@ -253,11 +259,26 @@ document.addEventListener('alpine:init', () => {
                         minResetTime = limit.resetTime;
                     }
 
+                    // Resolve effective threshold: per-model > per-account > global
+                    const accModelThreshold = acc.modelQuotaThresholds?.[modelId];
+                    const accThreshold = acc.quotaThreshold;
+                    const effective = accModelThreshold ?? accThreshold ?? globalThreshold;
+                    if (effective > maxEffectiveThreshold) {
+                        maxEffectiveThreshold = effective;
+                    }
+
+                    // Determine threshold source for display
+                    let thresholdSource = 'global';
+                    if (accModelThreshold !== undefined) thresholdSource = 'model';
+                    else if (accThreshold !== undefined) thresholdSource = 'account';
+
                     quotaInfo.push({
                         email: acc.email.split('@')[0],
                         fullEmail: acc.email,
                         pct: pct,
-                        resetTime: limit.resetTime
+                        resetTime: limit.resetTime,
+                        thresholdPct: Math.round(effective * 100),
+                        thresholdSource
                     });
                 });
 
@@ -265,6 +286,10 @@ document.addEventListener('alpine:init', () => {
                 const avgQuota = validAccountCount > 0 ? Math.round(totalQuotaSum / validAccountCount) : 0;
 
                 if (!showExhausted && minQuota === 0) return;
+
+                // Check if thresholds vary across accounts
+                const uniqueThresholds = new Set(quotaInfo.map(q => q.thresholdPct));
+                const hasVariedThresholds = uniqueThresholds.size > 1;
 
                 rows.push({
                     modelId,
@@ -277,7 +302,9 @@ document.addEventListener('alpine:init', () => {
                     quotaInfo,
                     pinned: !!config.pinned,
                     hidden: !!isHidden, // Use computed visibility
-                    activeCount: quotaInfo.filter(q => q.pct > 0).length
+                    activeCount: quotaInfo.filter(q => q.pct > 0).length,
+                    effectiveThresholdPct: Math.round(maxEffectiveThreshold * 100),
+                    hasVariedThresholds
                 });
             });
 
@@ -352,6 +379,7 @@ document.addEventListener('alpine:init', () => {
                 const quotaInfo = [];
                 // Use ALL accounts (no account filter)
                 this.accounts.forEach(acc => {
+                    if (acc.enabled === false) return;
                     const limit = acc.limits?.[modelId];
                     if (!limit) return;
                     const pct = limit.remainingFraction !== null ? Math.round(limit.remainingFraction * 100) : 0;
