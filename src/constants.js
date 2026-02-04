@@ -313,6 +313,14 @@ export const DEFAULT_PRESETS = [
     }
 ];
 
+// Model aliases based on auth type
+export const MODEL_ALIASES = {
+    [AUTH_TYPES.GEMINI_CLI]: {
+        'gemini-3-pro-high': 'gemini-3-pro-preview',
+        'gemini-3-flash': 'gemini-3-flash-preview'
+    }
+};
+
 export default {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     ANTIGRAVITY_HEADERS,
@@ -355,5 +363,6 @@ export default {
     MODEL_FALLBACK_MAP,
     TEST_MODELS,
     DEFAULT_PRESETS,
-    ANTIGRAVITY_SYSTEM_INSTRUCTION
+    ANTIGRAVITY_SYSTEM_INSTRUCTION,
+    MODEL_ALIASES
 };

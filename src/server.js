@@ -15,7 +15,7 @@ import { config } from './config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { forceRefresh } from './auth/token-extractor.js';
-import { REQUEST_BODY_LIMIT } from './constants.js';
+import { REQUEST_BODY_LIMIT, AUTH_TYPES, MODEL_ALIASES } from './constants.js';
 import { AccountManager } from './account-manager/index.js';
 import { clearThinkingSignatureCache } from './format/signature-cache.js';
 import { formatDuration } from './utils/helpers.js';
@@ -280,6 +280,18 @@ app.get('/health', async (req, res) => {
                             remainingFraction: info.remainingFraction,
                             resetTime: info.resetTime || null
                         };
+
+                        // Rename models based on authType
+                        const aliases = MODEL_ALIASES[account.authType];
+                        if (aliases && aliases[modelId]) {
+                            const newModelId = aliases[modelId];
+                            delete formattedQuotas[modelId];
+                            formattedQuotas[newModelId] = {
+                                remaining: info.remainingFraction !== null ? `${Math.round(info.remainingFraction * 100)}%` : 'N/A',
+                                remainingFraction: info.remainingFraction,
+                                resetTime: info.resetTime || null
+                            };
+                        }
                     }
 
                     return {
@@ -371,7 +383,18 @@ app.get('/account-limits', async (req, res) => {
                     const subscription = await getSubscriptionTier(token);
 
                     // Then fetch quotas with project ID for accurate quota info
-                    const quotas = await getModelQuotas(token, subscription.projectId);
+                    let quotas = await getModelQuotas(token, subscription.projectId);
+
+                    // Rename models based on authType for gemini-cli
+                    const aliases = MODEL_ALIASES[account.authType || 'antigravity'];
+                    if (aliases) {
+                        const renamedQuotas = {};
+                        for (const [modelId, data] of Object.entries(quotas)) {
+                            const newModelId = aliases[modelId] || modelId;
+                            renamedQuotas[newModelId] = data;
+                        }
+                        quotas = renamedQuotas;
+                    }
 
                     // Update account object with fresh data
                     account.subscription = {
@@ -663,7 +686,7 @@ app.get('/v1/models', async (req, res) => {
             });
         }
         const token = await accountManager.getTokenForAccount(account);
-        const models = await listModels(token);
+        const models = await listModels(token, account.authType);
         res.json(models);
     } catch (error) {
         logger.error('[API] Error listing models:', error);
@@ -832,7 +855,10 @@ app.post('/v1/messages', async (req, res) => {
             } catch (error) {
                 // If we haven't sent headers yet, we can send a proper error status
                 if (!res.headersSent) {
-                    logger.error('[API] Initial stream error:', error);
+                    const errorDetails = error.accountEmail
+                        ? `(Account: ${error.accountEmail}, Auth: ${error.accountAuthType}, Model: ${error.model})`
+                        : '';
+                    logger.error(`[API] Initial stream error ${errorDetails}:`, error);
                     const { errorType, statusCode, errorMessage } = parseError(error);
 
                     return res.status(statusCode).json({
@@ -846,7 +872,10 @@ app.post('/v1/messages', async (req, res) => {
 
                 // If headers were already sent (should only happen if error occurs mid-stream),
                 // we have to fallback to SSE error event
-                logger.error('[API] Mid-stream error:', error);
+                const errorDetails = error.accountEmail
+                    ? `(Account: ${error.accountEmail}, Auth: ${error.accountAuthType}, Model: ${error.model})`
+                    : '';
+                logger.error(`[API] Mid-stream error ${errorDetails}:`, error);
                 const { errorType, errorMessage } = parseError(error);
 
                 res.write(`event: error\ndata: ${JSON.stringify({
@@ -863,7 +892,10 @@ app.post('/v1/messages', async (req, res) => {
         }
 
     } catch (error) {
-        logger.error('[API] Error:', error);
+        const errorDetails = error.accountEmail
+            ? `(Account: ${error.accountEmail}, Auth: ${error.accountAuthType}, Model: ${error.model})`
+            : '';
+        logger.error(`[API] Error ${errorDetails}:`, error);
 
         let { errorType, statusCode, errorMessage } = parseError(error);
 

@@ -10,7 +10,10 @@ import {
     LOAD_CODE_ASSIST_ENDPOINTS,
     LOAD_CODE_ASSIST_HEADERS,
     getModelFamily,
-    MODEL_VALIDATION_CACHE_TTL_MS
+    MODEL_VALIDATION_CACHE_TTL_MS,
+    GEMINI_CLI_OAUTH_CONFIG,
+    GEMINI_CLI_ENDPOINTS,
+    AUTH_TYPES
 } from '../constants.js';
 import { logger } from '../utils/logger.js';
 
@@ -36,10 +39,11 @@ function isSupportedModel(modelId) {
  * Fetches models dynamically from the Cloud Code API
  *
  * @param {string} token - OAuth access token
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{object: string, data: Array<{id: string, object: string, created: number, owned_by: string, description: string}>}>} List of available models
  */
-export async function listModels(token) {
-    const data = await fetchAvailableModels(token);
+export async function listModels(token, authType) {
+    const data = await fetchAvailableModels(token, null, authType);
     if (!data || !data.models) {
         return { object: 'list', data: [] };
     }
@@ -47,12 +51,12 @@ export async function listModels(token) {
     const modelList = Object.entries(data.models)
         .filter(([modelId]) => isSupportedModel(modelId))
         .map(([modelId, modelData]) => ({
-        id: modelId,
-        object: 'model',
-        created: Math.floor(Date.now() / 1000),
-        owned_by: 'anthropic',
-        description: modelData.displayName || modelId
-    }));
+            id: modelId,
+            object: 'model',
+            created: Math.floor(Date.now() / 1000),
+            owned_by: 'anthropic',
+            description: modelData.displayName || modelId
+        }));
 
     // Warm the model validation cache
     modelCache.validModels = new Set(modelList.map(m => m.id));
@@ -70,19 +74,32 @@ export async function listModels(token) {
  *
  * @param {string} token - OAuth access token
  * @param {string} [projectId] - Optional project ID for accurate quota info
+ * @param {string} [authType] - Auth type ('antigravity' or 'gemini-cli')
  * @returns {Promise<Object>} Raw response from fetchAvailableModels API
  */
-export async function fetchAvailableModels(token, projectId = null) {
+export async function fetchAvailableModels(token, projectId = null, authType = AUTH_TYPES.ANTIGRAVITY) {
+    let baseHeaders = ANTIGRAVITY_HEADERS;
+    let endpoints = ANTIGRAVITY_ENDPOINT_FALLBACKS;
+
+    if (authType === AUTH_TYPES.GEMINI_CLI) {
+        baseHeaders = {
+            ...baseHeaders,
+            'User-Agent': GEMINI_CLI_OAUTH_CONFIG.userAgent
+        };
+        endpoints = GEMINI_CLI_ENDPOINTS;
+    }
+
     const headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...ANTIGRAVITY_HEADERS
+        ...baseHeaders
     };
 
     // Include project ID in body for accurate quota info (per Quotio implementation)
-    const body = projectId ? { project: projectId } : {};
+    // For Gemini CLI, we don't send project ID as it seems to cause permission errors
+    const body = projectId && authType !== AUTH_TYPES.GEMINI_CLI ? { project: projectId } : {};
 
-    for (const endpoint of ANTIGRAVITY_ENDPOINT_FALLBACKS) {
+    for (const endpoint of endpoints) {
         try {
             const url = `${endpoint}/v1internal:fetchAvailableModels`;
             const response = await fetch(url, {
