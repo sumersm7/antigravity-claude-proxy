@@ -135,7 +135,7 @@ document.addEventListener('alpine:init', () => {
                 this.accounts = (data.accounts || []).map(acc => ({
                     ...acc,
                     authType: acc.authType || 'antigravity',
-                    id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`
+                    id: acc.id || `${acc.email || 'unknown'}:${acc.authType || 'antigravity'}`
                 }));
                 if (data.models && data.models.length > 0) {
                     this.models = data.models;
@@ -252,6 +252,7 @@ document.addEventListener('alpine:init', () => {
             const rows = [];
             const showExhausted = Alpine.store('settings')?.showExhausted ?? true;
 
+            console.log(`[Models] Computing quota rows for ${models.length} models`);
             models.forEach(modelId => {
                 // Config
                 const config = this.modelConfig[modelId] || {};
@@ -269,7 +270,10 @@ document.addEventListener('alpine:init', () => {
 
                 // Models Page: Check settings for visibility
                 const showHidden = Alpine.store('settings')?.showHiddenModels ?? false;
-                if (isHidden && !showHidden) return;
+                if (isHidden && !showHidden) {
+                    console.debug(`[Models] Hiding ${modelId} (hidden=${isHidden}, showHidden=${showHidden})`);
+                    return;
+                }
 
                 // Filters
                 if (this.filters.family !== 'all' && this.filters.family !== family) return;
@@ -289,8 +293,8 @@ document.addEventListener('alpine:init', () => {
                 const globalThreshold = this.globalQuotaThreshold || 0;
 
                 this.accounts.forEach(acc => {
-                    if (acc.enabled === false) return;
-                    if (this.filters.account !== 'all' && acc.email !== this.filters.account) return;
+                    // if (acc.enabled === false) return; // Allow disabled accounts to be seen in Models page
+                    if (this.filters.account !== 'all' && acc.id !== this.filters.account) return;
 
                     const limit = acc.limits?.[modelId];
                     if (!limit) return;
@@ -320,8 +324,8 @@ document.addEventListener('alpine:init', () => {
                     else if (accThreshold !== undefined) thresholdSource = 'account';
 
                     quotaInfo.push({
-                        email: acc.email.split('@')[0],
-                        fullEmail: acc.email,
+                        email: (acc.email || 'unknown').split('@')[0],
+                        fullEmail: acc.email || 'unknown',
                         pct: pct,
                         resetTime: limit.resetTime,
                         thresholdPct: Math.round(effective * 100),
