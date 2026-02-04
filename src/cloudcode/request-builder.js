@@ -11,7 +11,8 @@ import {
     getModelFamily,
     isThinkingModel,
     GEMINI_CLI_OAUTH_CONFIG,
-    AUTH_TYPES
+    AUTH_TYPES,
+    MODEL_ALIASES
 } from '../constants.js';
 import { convertAnthropicToGoogle } from '../format/index.js';
 import { deriveSessionId } from './session-manager.js';
@@ -30,6 +31,12 @@ export function buildCloudCodeRequest(anthropicRequest, projectId, authType) {
     // Strip "gc/" prefix (used to coerce Gemini CLI auth)
     if (model.startsWith('gc/')) {
         model = model.substring(3);
+    }
+
+    // Apply model aliases if defined for this auth type
+    // e.g., gemini-3-flash -> gemini-3-flash-preview for gemini-cli
+    if (authType && MODEL_ALIASES[authType] && MODEL_ALIASES[authType][model]) {
+        model = MODEL_ALIASES[authType][model];
     }
     const googleRequest = convertAnthropicToGoogle(anthropicRequest);
 
