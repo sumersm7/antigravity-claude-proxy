@@ -355,7 +355,9 @@ app.get('/account-limits', async (req, res) => {
                 // Skip invalid accounts
                 if (account.isInvalid) {
                     return {
+                        id: account.id,
                         email: account.email,
+                        authType: account.authType || 'antigravity',
                         status: 'invalid',
                         error: account.invalidReason,
                         models: {}
@@ -388,14 +390,18 @@ app.get('/account-limits', async (req, res) => {
                     });
 
                     return {
+                        id: account.id,
                         email: account.email,
+                        authType: account.authType || 'antigravity',
                         status: 'ok',
                         subscription: account.subscription,
                         models: quotas
                     };
                 } catch (error) {
                     return {
+                        id: account.id,
                         email: account.email,
+                        authType: account.authType || 'antigravity',
                         status: 'error',
                         error: error.message,
                         subscription: account.subscription || { tier: 'unknown', projectId: null },
@@ -411,7 +417,9 @@ app.get('/account-limits', async (req, res) => {
                 return result.value;
             } else {
                 return {
+                    id: allAccounts[index].id,
                     email: allAccounts[index].email,
+                    authType: allAccounts[index].authType || 'antigravity',
                     status: 'error',
                     error: result.reason?.message || 'Unknown error',
                     models: {}
@@ -548,7 +556,7 @@ app.get('/account-limits', async (req, res) => {
         // Get account metadata from AccountManager
         const accountStatus = accountManager.getStatus();
         const accountMetadataMap = new Map(
-            accountStatus.accounts.map(a => [a.email, a])
+            accountStatus.accounts.map(a => [a.id, a])
         );
 
         // Build response data
@@ -559,10 +567,12 @@ app.get('/account-limits', async (req, res) => {
             modelConfig: config.modelMapping || {},
             globalQuotaThreshold: config.globalQuotaThreshold || 0,
             accounts: accountLimits.map(acc => {
-                // Merge quota data with account metadata
-                const metadata = accountMetadataMap.get(acc.email) || {};
+                // Merge quota data with account metadata (use id for lookup)
+                const metadata = accountMetadataMap.get(acc.id) || {};
                 return {
+                    id: acc.id,
                     email: acc.email,
+                    authType: acc.authType || 'antigravity',
                     status: acc.status,
                     error: acc.error || null,
                     // Include metadata from AccountManager (WebUI needs these)
@@ -791,7 +801,7 @@ app.post('/v1/messages', async (req, res) => {
             try {
                 // Initialize the generator
                 const generator = sendMessageStream(request, accountManager, FALLBACK_ENABLED);
-                
+
                 // BUFFERING STRATEGY:
                 // Pull the first event *before* sending headers. 
                 // If this throws, we can safely send a 4xx/5xx error JSON.
@@ -816,7 +826,7 @@ app.post('/v1/messages', async (req, res) => {
                     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
                     if (res.flush) res.flush();
                 }
-                
+
                 res.end();
 
             } catch (error) {
@@ -824,7 +834,7 @@ app.post('/v1/messages', async (req, res) => {
                 if (!res.headersSent) {
                     logger.error('[API] Initial stream error:', error);
                     const { errorType, statusCode, errorMessage } = parseError(error);
-                    
+
                     return res.status(statusCode).json({
                         type: 'error',
                         error: {
@@ -833,7 +843,7 @@ app.post('/v1/messages', async (req, res) => {
                         }
                     });
                 }
-                
+
                 // If headers were already sent (should only happen if error occurs mid-stream),
                 // we have to fallback to SSE error event
                 logger.error('[API] Mid-stream error:', error);

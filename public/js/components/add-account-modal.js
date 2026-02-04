@@ -10,6 +10,7 @@ window.Components.addAccountModal = () => ({
     authState: '',
     callbackInput: '',
     submitting: false,
+    authType: 'antigravity', // 'antigravity' or 'gemini-cli'
 
     /**
      * Reset all state to initial values
@@ -20,6 +21,7 @@ window.Components.addAccountModal = () => ({
         this.authState = '';
         this.callbackInput = '';
         this.submitting = false;
+        this.authType = 'antigravity';
         // Close any open details elements
         const details = document.querySelectorAll('#add_account_modal details[open]');
         details.forEach(d => d.removeAttribute('open'));
@@ -38,7 +40,7 @@ window.Components.addAccountModal = () => ({
                 const {
                     response,
                     newPassword
-                } = await window.utils.request('/api/auth/url', {}, password);
+                } = await window.utils.request(`/api/auth/url?authType=${encodeURIComponent(this.authType)}`, {}, password);
                 if (newPassword) Alpine.store('global').webuiPassword = newPassword;
                 const data = await response.json();
                 if (data.status === 'ok') {

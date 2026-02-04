@@ -15,7 +15,7 @@
 import path from 'path';
 import express from 'express';
 import { getPublicConfig, saveConfig, config } from '../config.js';
-import { DEFAULT_PORT, ACCOUNT_CONFIG_PATH, MAX_ACCOUNTS, DEFAULT_PRESETS } from '../constants.js';
+import { DEFAULT_PORT, ACCOUNT_CONFIG_PATH, MAX_ACCOUNTS, DEFAULT_PRESETS, AUTH_TYPES } from '../constants.js';
 import { readClaudeConfig, updateClaudeConfig, replaceClaudeConfig, getClaudeConfigPath, readPresets, savePreset, deletePreset } from '../utils/claude-config.js';
 import { logger } from '../utils/logger.js';
 import { getAuthorizationUrl, completeOAuthFlow, startCallbackServer } from '../auth/oauth.js';
@@ -37,27 +37,31 @@ const pendingOAuthFlows = new Map();
 
 /**
  * Set account enabled/disabled state
+ * @param {string} id - Account id (email:authType format)
+ * @param {boolean} enabled - Whether account should be enabled
  */
-async function setAccountEnabled(email, enabled) {
+async function setAccountEnabled(id, enabled) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
-    const account = accounts.find(a => a.email === email);
+    const account = accounts.find(a => a.id === id);
     if (!account) {
-        throw new Error(`Account ${email} not found`);
+        throw new Error(`Account ${id} not found`);
     }
     account.enabled = enabled;
     await saveAccounts(ACCOUNT_CONFIG_PATH, accounts, settings, activeIndex);
-    logger.info(`[WebUI] Account ${email} ${enabled ? 'enabled' : 'disabled'}`);
+    logger.info(`[WebUI] Account ${account.email} ${enabled ? 'enabled' : 'disabled'}`);
 }
 
 /**
  * Remove account from config
+ * @param {string} id - Account id (email:authType format)
  */
-async function removeAccount(email) {
+async function removeAccount(id) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
-    const index = accounts.findIndex(a => a.email === email);
+    const index = accounts.findIndex(a => a.id === id);
     if (index === -1) {
-        throw new Error(`Account ${email} not found`);
+        throw new Error(`Account ${id} not found`);
     }
+    const email = accounts[index].email;
     accounts.splice(index, 1);
     // Adjust activeIndex if needed
     const newActiveIndex = activeIndex >= accounts.length ? Math.max(0, accounts.length - 1) : activeIndex;
@@ -67,24 +71,31 @@ async function removeAccount(email) {
 
 /**
  * Add new account to config
+ * @param {Object} accountData - Account data including email, refreshToken, source, authType
  * @throws {Error} If MAX_ACCOUNTS limit is reached (for new accounts only)
  */
 async function addAccount(accountData) {
     const { accounts, settings, activeIndex } = await loadAccounts(ACCOUNT_CONFIG_PATH);
 
-    // Check if account already exists
-    const existingIndex = accounts.findIndex(a => a.email === accountData.email);
+    // Ensure authType is set (default to antigravity)
+    const authType = accountData.authType || AUTH_TYPES.ANTIGRAVITY;
+    const id = `${accountData.email}:${authType}`;
+
+    // Check if account already exists (by id for same email+authType)
+    const existingIndex = accounts.findIndex(a => a.id === id);
     if (existingIndex !== -1) {
         // Update existing account
         accounts[existingIndex] = {
             ...accounts[existingIndex],
             ...accountData,
+            id,
+            authType,
             enabled: true,
             isInvalid: false,
             invalidReason: null,
             addedAt: accounts[existingIndex].addedAt || new Date().toISOString()
         };
-        logger.info(`[WebUI] Account ${accountData.email} updated`);
+        logger.info(`[WebUI] Account ${accountData.email} (${authType}) updated`);
     } else {
         // Check MAX_ACCOUNTS limit before adding new account
         if (accounts.length >= MAX_ACCOUNTS) {
@@ -93,6 +104,8 @@ async function addAccount(accountData) {
         // Add new account
         accounts.push({
             ...accountData,
+            id,
+            authType,
             enabled: true,
             isInvalid: false,
             invalidReason: null,
@@ -100,7 +113,7 @@ async function addAccount(accountData) {
             lastUsed: null,
             addedAt: new Date().toISOString()
         });
-        logger.info(`[WebUI] Account ${accountData.email} added`);
+        logger.info(`[WebUI] Account ${accountData.email} (${authType}) added`);
     }
 
     await saveAccounts(ACCOUNT_CONFIG_PATH, accounts, settings, activeIndex);
@@ -948,6 +961,9 @@ export function mountWebUI(app, dirname, accountManager) {
      */
     app.get('/api/auth/url', async (req, res) => {
         try {
+            // Get authType from query param (default to antigravity)
+            const authType = req.query.authType || AUTH_TYPES.ANTIGRAVITY;
+
             // Clean up old flows (> 10 mins)
             const now = Date.now();
             for (const [key, val] of pendingOAuthFlows.entries()) {
@@ -956,18 +972,19 @@ export function mountWebUI(app, dirname, accountManager) {
                 }
             }
 
-            // Generate OAuth URL using default redirect URI (localhost:51121)
-            const { url, verifier, state } = getAuthorizationUrl();
+            // Generate OAuth URL using the specified authType
+            const { url, verifier, state } = getAuthorizationUrl(authType);
 
             // Start callback server on port 51121 (same as CLI)
             const { promise: serverPromise, abort: abortServer } = startCallbackServer(state, 120000); // 2 min timeout
 
-            // Store the flow data
+            // Store the flow data including authType
             pendingOAuthFlows.set(state, {
                 serverPromise,
                 abortServer,
                 verifier,
                 state,
+                authType,
                 timestamp: Date.now()
             });
 
@@ -975,8 +992,8 @@ export function mountWebUI(app, dirname, accountManager) {
             serverPromise
                 .then(async (code) => {
                     try {
-                        logger.info('[WebUI] Received OAuth callback, completing flow...');
-                        const accountData = await completeOAuthFlow(code, verifier);
+                        logger.info(`[WebUI] Received OAuth callback (authType: ${authType}), completing flow...`);
+                        const accountData = await completeOAuthFlow(code, verifier, authType);
 
                         // Add or update the account
                         // Note: Don't set projectId here - it will be discovered and stored
@@ -984,7 +1001,8 @@ export function mountWebUI(app, dirname, accountManager) {
                         await addAccount({
                             email: accountData.email,
                             refreshToken: accountData.refreshToken,
-                            source: 'oauth'
+                            source: 'oauth',
+                            authType: authType
                         });
 
                         // Reload AccountManager to pick up the new account
@@ -1036,21 +1054,22 @@ export function mountWebUI(app, dirname, accountManager) {
                 });
             }
 
-            const { verifier, abortServer } = flowData;
+            const { verifier, abortServer, authType } = flowData;
 
             // Extract code from input (URL or raw code)
             const { extractCodeFromInput, completeOAuthFlow } = await import('../auth/oauth.js');
             const { code } = extractCodeFromInput(callbackInput);
 
-            // Complete the OAuth flow
-            const accountData = await completeOAuthFlow(code, verifier);
+            // Complete the OAuth flow with authType
+            const accountData = await completeOAuthFlow(code, verifier, authType);
 
             // Add or update the account
             await addAccount({
                 email: accountData.email,
                 refreshToken: accountData.refreshToken,
                 projectId: accountData.projectId,
-                source: 'oauth'
+                source: 'oauth',
+                authType: authType
             });
 
             // Reload AccountManager to pick up the new account

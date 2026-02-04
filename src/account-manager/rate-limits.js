@@ -154,12 +154,12 @@ export function markRateLimited(accounts, email, resetMs = null, modelId) {
  * Mark an account as invalid (credentials need re-authentication)
  *
  * @param {Array} accounts - Array of account objects
- * @param {string} email - Email of the account to mark
+ * @param {string} id - Account id (email:authType format) to mark
  * @param {string} reason - Reason for marking as invalid
  * @returns {boolean} True if account was found and marked
  */
-export function markInvalid(accounts, email, reason = 'Unknown error') {
-    const account = accounts.find(a => a.email === email);
+export function markInvalid(accounts, id, reason = 'Unknown error') {
+    const account = accounts.find(a => a.id === id);
     if (!account) return false;
 
     account.isInvalid = true;
@@ -167,7 +167,7 @@ export function markInvalid(accounts, email, reason = 'Unknown error') {
     account.invalidAt = Date.now();
 
     logger.error(
-        `[AccountManager] ⚠ Account INVALID: ${email}`
+        `[AccountManager] ⚠ Account INVALID: ${account.email}`
     );
     logger.error(
         `[AccountManager]   Reason: ${reason}`
@@ -257,11 +257,11 @@ export function getConsecutiveFailures(accounts, email) {
  * Called on successful request (matches opencode-antigravity-auth)
  *
  * @param {Array} accounts - Array of account objects
- * @param {string} email - Email of the account
+ * @param {string} id - Account id (email:authType format)
  * @returns {boolean} True if account was found and reset
  */
-export function resetConsecutiveFailures(accounts, email) {
-    const account = accounts.find(a => a.email === email);
+export function resetConsecutiveFailures(accounts, id) {
+    const account = accounts.find(a => a.id === id);
     if (!account) return false;
     account.consecutiveFailures = 0;
     return true;

@@ -33,8 +33,9 @@ window.Components.accountManager = () => ({
         const query = this.searchQuery.toLowerCase().trim();
         return accounts.filter(acc => {
             return acc.email.toLowerCase().includes(query) ||
-                   (acc.projectId && acc.projectId.toLowerCase().includes(query)) ||
-                   (acc.source && acc.source.toLowerCase().includes(query));
+                (acc.projectId && acc.projectId.toLowerCase().includes(query)) ||
+                (acc.source && acc.source.toLowerCase().includes(query)) ||
+                (acc.authType && acc.authType.toLowerCase().includes(query));
         });
     },
 
@@ -51,13 +52,16 @@ window.Components.accountManager = () => ({
         return email;
     },
 
-    async refreshAccount(email) {
+    async refreshAccount(id) {
         return await window.ErrorHandler.withLoading(async () => {
             const store = Alpine.store('global');
-            store.showToast(store.t('refreshingAccount', { email: Redact.email(email) }), 'info');
+            const dataStore = Alpine.store('data');
+            const account = dataStore.accounts.find(a => a.id === id);
+            const displayEmail = account ? Redact.email(account.email) : id;
+            store.showToast(store.t('refreshingAccount', { email: displayEmail }), 'info');
 
             const { response, newPassword } = await window.utils.request(
-                `/api/accounts/${encodeURIComponent(email)}/refresh`,
+                `/api/accounts/${encodeURIComponent(id)}/refresh`,
                 { method: 'POST' },
                 store.webuiPassword
             );
@@ -65,7 +69,7 @@ window.Components.accountManager = () => ({
 
             const data = await response.json();
             if (data.status === 'ok') {
-                store.showToast(store.t('refreshedAccount', { email: Redact.email(email) }), 'success');
+                store.showToast(store.t('refreshedAccount', { email: displayEmail }), 'success');
                 Alpine.store('data').fetchData();
             } else {
                 throw new Error(data.error || store.t('refreshFailed'));
@@ -73,19 +77,20 @@ window.Components.accountManager = () => ({
         }, this, 'refreshing', { errorMessage: 'Failed to refresh account' });
     },
 
-    async toggleAccount(email, enabled) {
+    async toggleAccount(id, enabled) {
         const store = Alpine.store('global');
         const password = store.webuiPassword;
 
         // Optimistic update: immediately update UI
         const dataStore = Alpine.store('data');
-        const account = dataStore.accounts.find(a => a.email === email);
+        const account = dataStore.accounts.find(a => a.id === id);
+        const displayEmail = account ? Redact.email(account.email) : id;
         if (account) {
             account.enabled = enabled;
         }
 
         try {
-            const { response, newPassword } = await window.utils.request(`/api/accounts/${encodeURIComponent(email)}/toggle`, {
+            const { response, newPassword } = await window.utils.request(`/api/accounts/${encodeURIComponent(id)}/toggle`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled })
@@ -95,7 +100,7 @@ window.Components.accountManager = () => ({
             const data = await response.json();
             if (data.status === 'ok') {
                 const status = enabled ? store.t('enabledStatus') : store.t('disabledStatus');
-                store.showToast(store.t('accountToggled', { email: Redact.email(email), status }), 'success');
+                store.showToast(store.t('accountToggled', { email: displayEmail, status }), 'success');
                 // Refresh to confirm server state
                 await dataStore.fetchData();
             } else {
@@ -116,12 +121,16 @@ window.Components.accountManager = () => ({
         }
     },
 
-    async fixAccount(email) {
+    async fixAccount(id) {
         const store = Alpine.store('global');
-        store.showToast(store.t('reauthenticating', { email: Redact.email(email) }), 'info');
+        const dataStore = Alpine.store('data');
+        const account = dataStore.accounts.find(a => a.id === id);
+        const displayEmail = account ? Redact.email(account.email) : id;
+        const authType = account?.authType || 'antigravity';
+        store.showToast(store.t('reauthenticating', { email: displayEmail }), 'info');
         const password = store.webuiPassword;
         try {
-            const urlPath = `/api/auth/url?email=${encodeURIComponent(email)}`;
+            const urlPath = `/api/auth/url?authType=${encodeURIComponent(authType)}`;
             const { response, newPassword } = await window.utils.request(urlPath, {}, password);
             if (newPassword) store.webuiPassword = newPassword;
 
@@ -136,18 +145,21 @@ window.Components.accountManager = () => ({
         }
     },
 
-    confirmDeleteAccount(email) {
-        this.deleteTarget = email;
+    confirmDeleteAccount(id) {
+        this.deleteTarget = id;
         document.getElementById('delete_account_modal').showModal();
     },
 
     async executeDelete() {
-        const email = this.deleteTarget;
+        const id = this.deleteTarget;
         return await window.ErrorHandler.withLoading(async () => {
             const store = Alpine.store('global');
+            const dataStore = Alpine.store('data');
+            const account = dataStore.accounts.find(a => a.id === id);
+            const displayEmail = account ? Redact.email(account.email) : id;
 
             const { response, newPassword } = await window.utils.request(
-                `/api/accounts/${encodeURIComponent(email)}`,
+                `/api/accounts/${encodeURIComponent(id)}`,
                 { method: 'DELETE' },
                 store.webuiPassword
             );
@@ -155,7 +167,7 @@ window.Components.accountManager = () => ({
 
             const data = await response.json();
             if (data.status === 'ok') {
-                store.showToast(store.t('deletedAccount', { email: Redact.email(email) }), 'success');
+                store.showToast(store.t('deletedAccount', { email: displayEmail }), 'success');
                 Alpine.store('data').fetchData();
                 document.getElementById('delete_account_modal').close();
                 this.deleteTarget = '';
@@ -323,21 +335,21 @@ window.Components.accountManager = () => ({
      */
     getMainModelQuota(account) {
         const limits = account.limits || {};
-        
+
         const getQuotaVal = (id) => {
-             const l = limits[id];
-             if (!l) return -1;
-             if (l.remainingFraction !== null) return l.remainingFraction;
-             if (l.resetTime) return 0; // Rate limited
-             return -1; // Unknown
+            const l = limits[id];
+            if (!l) return -1;
+            if (l.remainingFraction !== null) return l.remainingFraction;
+            if (l.resetTime) return 0; // Rate limited
+            return -1; // Unknown
         };
 
         const validIds = Object.keys(limits).filter(id => getQuotaVal(id) >= 0);
-        
+
         if (validIds.length === 0) return { percent: null, model: '-' };
 
         const DEAD_THRESHOLD = 0.01;
-        
+
         const MODEL_TIERS = [
             { pattern: /\bopus\b/, aliveScore: 100, deadScore: 60 },
             { pattern: /\bsonnet\b/, aliveScore: 90, deadScore: 55 },
@@ -353,14 +365,14 @@ window.Components.accountManager = () => ({
             const lower = id.toLowerCase();
             const val = getQuotaVal(id);
             const isAlive = val > DEAD_THRESHOLD;
-            
+
             for (const tier of MODEL_TIERS) {
                 if (tier.pattern.test(lower)) {
                     if (tier.extraCheck && !tier.extraCheck(lower)) continue;
                     return isAlive ? tier.aliveScore : tier.deadScore;
                 }
             }
-            
+
             return isAlive ? 5 : 0;
         };
 
@@ -369,7 +381,7 @@ window.Components.accountManager = () => ({
 
         const bestModel = validIds[0];
         const val = getQuotaVal(bestModel);
-        
+
         return {
             percent: Math.round(val * 100),
             model: bestModel

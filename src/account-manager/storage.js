@@ -24,21 +24,30 @@ export async function loadAccounts(configPath = ACCOUNT_CONFIG_PATH) {
         const configData = await readFile(configPath, 'utf-8');
         const config = JSON.parse(configData);
 
-        const accounts = (config.accounts || []).map(acc => ({
-            ...acc,
-            lastUsed: acc.lastUsed || null,
-            enabled: acc.enabled !== false, // Default to true if not specified
-            // Reset invalid flag on startup - give accounts a fresh chance to refresh
-            isInvalid: false,
-            invalidReason: null,
-            modelRateLimits: acc.modelRateLimits || {},
-            // New fields for subscription and quota tracking
-            subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
-            quota: acc.quota || { models: {}, lastChecked: null },
-            // Quota threshold settings (per-account and per-model overrides)
-            quotaThreshold: acc.quotaThreshold,  // undefined means use global
-            modelQuotaThresholds: acc.modelQuotaThresholds || {}
-        }));
+        const accounts = (config.accounts || []).map(acc => {
+            // Default authType to 'antigravity' for migration
+            const authType = acc.authType || 'antigravity';
+            // Generate stable id from email and authType
+            const id = acc.id || `${acc.email}:${authType}`;
+
+            return {
+                ...acc,
+                id,
+                authType,
+                lastUsed: acc.lastUsed || null,
+                enabled: acc.enabled !== false, // Default to true if not specified
+                // Reset invalid flag on startup - give accounts a fresh chance to refresh
+                isInvalid: false,
+                invalidReason: null,
+                modelRateLimits: acc.modelRateLimits || {},
+                // New fields for subscription and quota tracking
+                subscription: acc.subscription || { tier: 'unknown', projectId: null, detectedAt: null },
+                quota: acc.quota || { models: {}, lastChecked: null },
+                // Quota threshold settings (per-account and per-model overrides)
+                quotaThreshold: acc.quotaThreshold,  // undefined means use global
+                modelQuotaThresholds: acc.modelQuotaThresholds || {}
+            };
+        });
 
         const settings = config.settings || {};
         let activeIndex = config.activeIndex || 0;
@@ -72,15 +81,21 @@ export function loadDefaultAccount(dbPath) {
     try {
         const authData = getAuthStatus(dbPath);
         if (authData?.apiKey) {
+            const email = authData.email || 'default@antigravity';
+            const authType = 'antigravity';
+            const id = `${email}:${authType}`;
+
             const account = {
-                email: authData.email || 'default@antigravity',
+                id,
+                email,
+                authType,
                 source: 'database',
                 lastUsed: null,
                 modelRateLimits: {}
             };
 
             const tokenCache = new Map();
-            tokenCache.set(account.email, {
+            tokenCache.set(id, {
                 token: authData.apiKey,
                 extractedAt: Date.now()
             });
@@ -112,7 +127,9 @@ export async function saveAccounts(configPath, accounts, settings, activeIndex) 
 
         const config = {
             accounts: accounts.map(acc => ({
+                id: acc.id,
                 email: acc.email,
+                authType: acc.authType || 'antigravity',
                 source: acc.source,
                 enabled: acc.enabled !== false, // Persist enabled state
                 dbPath: acc.dbPath || null,

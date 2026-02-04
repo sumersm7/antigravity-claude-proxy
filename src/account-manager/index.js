@@ -44,9 +44,9 @@ export class AccountManager {
     #strategy = null;
     #strategyName = DEFAULT_STRATEGY;
 
-    // Per-account caches
-    #tokenCache = new Map(); // email -> { token, extractedAt }
-    #projectCache = new Map(); // email -> projectId
+    // Per-account caches (keyed by account.id = "email:authType")
+    #tokenCache = new Map(); // id -> { token, extractedAt }
+    #projectCache = new Map(); // id -> projectId
 
     constructor(configPath = ACCOUNT_CONFIG_PATH, strategyName = null) {
         this.#configPath = configPath;
@@ -192,7 +192,7 @@ export class AccountManager {
         }
         // Reset consecutive failures on success (matches opencode-antigravity-auth)
         if (account?.email) {
-            resetFailures(this.#accounts, account.email);
+            resetFailures(this.#accounts, account.id);
         }
     }
 
@@ -363,7 +363,7 @@ export class AccountManager {
         return fetchToken(
             account,
             this.#tokenCache,
-            (email, reason) => this.markInvalid(email, reason),
+            (id, reason) => this.markInvalid(id, reason),
             () => this.saveToDisk()
         );
     }
@@ -381,18 +381,18 @@ export class AccountManager {
 
     /**
      * Clear project cache for an account (useful on auth errors)
-     * @param {string|null} email - Email to clear cache for, or null to clear all
+     * @param {string|null} id - Account id to clear cache for, or null to clear all
      */
-    clearProjectCache(email = null) {
-        clearProject(this.#projectCache, email);
+    clearProjectCache(id = null) {
+        clearProject(this.#projectCache, id);
     }
 
     /**
      * Clear token cache for an account (useful on auth errors)
-     * @param {string|null} email - Email to clear cache for, or null to clear all
+     * @param {string|null} id - Account id to clear cache for, or null to clear all
      */
-    clearTokenCache(email = null) {
-        clearToken(this.#tokenCache, email);
+    clearTokenCache(id = null) {
+        clearToken(this.#tokenCache, id);
     }
 
     /**
@@ -426,7 +426,9 @@ export class AccountManager {
             invalid: invalid.length,
             summary: `${this.#accounts.length} total, ${available.length} available, ${rateLimited.length} rate-limited, ${invalid.length} invalid`,
             accounts: this.#accounts.map(a => ({
+                id: a.id,
                 email: a.email,
+                authType: a.authType || 'antigravity',
                 source: a.source,
                 enabled: a.enabled !== false,  // Default to true if undefined
                 projectId: a.projectId || null,

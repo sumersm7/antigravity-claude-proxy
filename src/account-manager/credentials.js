@@ -31,10 +31,10 @@ const subscriptionFetchInProgress = new Set();
  */
 async function fetchAndSaveSubscription(token, account, onSave) {
     // Avoid duplicate fetches for the same account
-    if (subscriptionFetchInProgress.has(account.email)) {
+    if (subscriptionFetchInProgress.has(account.id)) {
         return;
     }
-    subscriptionFetchInProgress.add(account.email);
+    subscriptionFetchInProgress.add(account.id);
 
     try {
         // Call discoverProject just to get subscription info
@@ -49,7 +49,7 @@ async function fetchAndSaveSubscription(token, account, onSave) {
     } catch (e) {
         logger.debug(`[AccountManager] Subscription fetch failed for ${account.email}: ${e.message}`);
     } finally {
-        subscriptionFetchInProgress.delete(account.email);
+        subscriptionFetchInProgress.delete(account.id);
     }
 }
 
@@ -58,14 +58,14 @@ async function fetchAndSaveSubscription(token, account, onSave) {
  *
  * @param {Object} account - Account object with email and credentials
  * @param {Map} tokenCache - Token cache map
- * @param {Function} onInvalid - Callback when account is invalid (email, reason)
+ * @param {Function} onInvalid - Callback when account is invalid (id, reason)
  * @param {Function} onSave - Callback to save changes
  * @returns {Promise<string>} OAuth access token
  * @throws {Error} If token refresh fails
  */
 export async function getTokenForAccount(account, tokenCache, onInvalid, onSave) {
-    // Check cache first
-    const cached = tokenCache.get(account.email);
+    // Check cache first (use id for unique cache key)
+    const cached = tokenCache.get(account.id);
     if (cached && (Date.now() - cached.extractedAt) < TOKEN_REFRESH_INTERVAL_MS) {
         return cached.token;
     }
@@ -76,7 +76,7 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
     if (account.source === 'oauth' && account.refreshToken) {
         // OAuth account - use refresh token to get new access token
         try {
-            const tokens = await refreshAccessToken(account.refreshToken);
+            const tokens = await refreshAccessToken(account.refreshToken, account.authType);
             token = tokens.accessToken;
             // Clear invalid flag on success
             if (account.isInvalid) {
@@ -94,8 +94,8 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
             }
 
             logger.error(`[AccountManager] Failed to refresh token for ${account.email}:`, error.message);
-            // Mark account as invalid (credentials need re-auth)
-            if (onInvalid) onInvalid(account.email, error.message);
+            // Mark account as invalid (credentials need re-auth) - use id for unique identification
+            if (onInvalid) onInvalid(account.id, error.message);
             throw new Error(`AUTH_INVALID: ${account.email}: ${error.message}`);
         }
     } else if (account.source === 'manual' && account.apiKey) {
@@ -107,8 +107,8 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
         token = authData.apiKey;
     }
 
-    // Cache the token
-    tokenCache.set(account.email, {
+    // Cache the token (use id for unique cache key)
+    tokenCache.set(account.id, {
         token,
         extractedAt: Date.now()
     });
@@ -127,8 +127,8 @@ export async function getTokenForAccount(account, tokenCache, onInvalid, onSave)
  * @returns {Promise<string>} Project ID
  */
 export async function getProjectForAccount(account, token, projectCache, onSave = null) {
-    // Check cache first
-    const cached = projectCache.get(account.email);
+    // Check cache first (use id for unique cache key)
+    const cached = projectCache.get(account.id);
     if (cached) {
         return cached;
     }
@@ -138,7 +138,7 @@ export async function getProjectForAccount(account, token, projectCache, onSave 
 
     // If we have a managedProjectId in the refresh token, use it
     if (parts.managedProjectId) {
-        projectCache.set(account.email, parts.managedProjectId);
+        projectCache.set(account.id, parts.managedProjectId);
         // If subscription is missing/unknown, fetch it now (blocking)
         if (!account.subscription || account.subscription.tier === 'unknown') {
             await fetchAndSaveSubscription(token, account, onSave);
@@ -148,7 +148,7 @@ export async function getProjectForAccount(account, token, projectCache, onSave 
 
     // Legacy: check account.projectId for backward compatibility
     if (account.projectId) {
-        projectCache.set(account.email, account.projectId);
+        projectCache.set(account.id, account.projectId);
         // If subscription is missing/unknown, fetch it now (blocking)
         if (!account.subscription || account.subscription.tier === 'unknown') {
             await fetchAndSaveSubscription(token, account, onSave);
@@ -204,7 +204,7 @@ export async function getProjectForAccount(account, token, projectCache, onSave 
         }
     }
 
-    projectCache.set(account.email, project);
+    projectCache.set(account.id, project);
     return project;
 }
 
@@ -350,11 +350,11 @@ function extractSubscriptionFromResponse(data) {
  * Clear project cache for an account
  *
  * @param {Map} projectCache - Project cache map
- * @param {string|null} email - Email to clear cache for, or null to clear all
+ * @param {string|null} id - Account id to clear cache for, or null to clear all
  */
-export function clearProjectCache(projectCache, email = null) {
-    if (email) {
-        projectCache.delete(email);
+export function clearProjectCache(projectCache, id = null) {
+    if (id) {
+        projectCache.delete(id);
     } else {
         projectCache.clear();
     }
@@ -364,11 +364,11 @@ export function clearProjectCache(projectCache, email = null) {
  * Clear token cache for an account
  *
  * @param {Map} tokenCache - Token cache map
- * @param {string|null} email - Email to clear cache for, or null to clear all
+ * @param {string|null} id - Account id to clear cache for, or null to clear all
  */
-export function clearTokenCache(tokenCache, email = null) {
-    if (email) {
-        tokenCache.delete(email);
+export function clearTokenCache(tokenCache, id = null) {
+    if (id) {
+        tokenCache.delete(id);
     } else {
         tokenCache.clear();
     }

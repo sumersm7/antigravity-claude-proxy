@@ -77,11 +77,16 @@ document.addEventListener('alpine:init', () => {
 
                     // Basic validity check
                     if (data.accounts && data.models) {
-                        this.accounts = data.accounts;
+                        // Migration: ensure accounts have id field
+                        this.accounts = data.accounts.map(acc => ({
+                            ...acc,
+                            authType: acc.authType || 'antigravity',
+                            id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`
+                        }));
                         this.models = data.models;
                         this.modelConfig = data.modelConfig || {};
                         this.usageHistory = data.usageHistory || {};
-                        
+
                         // Don't show loading on initial load if we have cache
                         this.initialLoad = false;
                         this.computeQuotaRows();
@@ -126,7 +131,12 @@ document.addEventListener('alpine:init', () => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
-                this.accounts = data.accounts || [];
+                // Migration: ensure accounts have id field
+                this.accounts = (data.accounts || []).map(acc => ({
+                    ...acc,
+                    authType: acc.authType || 'antigravity',
+                    id: acc.id || `${acc.email}:${acc.authType || 'antigravity'}`
+                }));
                 if (data.models && data.models.length > 0) {
                     this.models = data.models;
                 }
@@ -351,7 +361,7 @@ document.addEventListener('alpine:init', () => {
 
             this.quotaRows = rows.sort((a, b) => {
                 if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-                
+
                 let valA = a[sortCol];
                 let valB = b[sortCol];
 
@@ -468,7 +478,9 @@ document.addEventListener('alpine:init', () => {
                 });
 
                 return {
+                    id: `${email}:antigravity`,
                     email,
+                    authType: 'antigravity',
                     status: i === 3 ? 'invalid' : 'ok',
                     error: i === 3 ? 'Token expired' : null,
                     source: i === 0 ? 'database' : 'oauth',

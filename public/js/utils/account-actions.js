@@ -7,15 +7,15 @@ window.AccountActions = window.AccountActions || {};
 
 /**
  * 刷新账号 token 和配额信息
- * @param {string} email - 账号邮箱
+ * @param {string} id - 账号ID (email:authType格式)
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
-window.AccountActions.refreshAccount = async function(email) {
+window.AccountActions.refreshAccount = async function (id) {
     const store = Alpine.store('global');
 
     try {
         const { response, newPassword } = await window.utils.request(
-            `/api/accounts/${encodeURIComponent(email)}/refresh`,
+            `/api/accounts/${encodeURIComponent(id)}/refresh`,
             { method: 'POST' },
             store.webuiPassword
         );
@@ -40,16 +40,16 @@ window.AccountActions.refreshAccount = async function(email) {
 
 /**
  * 切换账号启用/禁用状态（包含乐观更新和错误回滚）
- * @param {string} email - 账号邮箱
+ * @param {string} id - 账号ID (email:authType格式)
  * @param {boolean} enabled - 目标状态（true=启用, false=禁用）
  * @returns {Promise<{success: boolean, rolledBack?: boolean, data?: object, error?: string}>}
  */
-window.AccountActions.toggleAccount = async function(email, enabled) {
+window.AccountActions.toggleAccount = async function (id, enabled) {
     const store = Alpine.store('global');
     const dataStore = Alpine.store('data');
 
     // 乐观更新：立即修改 UI
-    const account = dataStore.accounts.find(a => a.email === email);
+    const account = dataStore.accounts.find(a => a.id === id);
     const previousState = account ? account.enabled : !enabled;
 
     if (account) {
@@ -58,7 +58,7 @@ window.AccountActions.toggleAccount = async function(email, enabled) {
 
     try {
         const { response, newPassword } = await window.utils.request(
-            `/api/accounts/${encodeURIComponent(email)}/toggle`,
+            `/api/accounts/${encodeURIComponent(id)}/toggle`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -92,15 +92,15 @@ window.AccountActions.toggleAccount = async function(email, enabled) {
 
 /**
  * 删除账号
- * @param {string} email - 账号邮箱
+ * @param {string} id - 账号ID (email:authType格式)
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
-window.AccountActions.deleteAccount = async function(email) {
+window.AccountActions.deleteAccount = async function (id) {
     const store = Alpine.store('global');
 
     try {
         const { response, newPassword } = await window.utils.request(
-            `/api/accounts/${encodeURIComponent(email)}`,
+            `/api/accounts/${encodeURIComponent(id)}`,
             { method: 'DELETE' },
             store.webuiPassword
         );
@@ -129,7 +129,7 @@ window.AccountActions.deleteAccount = async function(email) {
  * @param {string} email - 账号邮箱
  * @returns {Promise<{success: boolean, url?: string, error?: string}>}
  */
-window.AccountActions.getFixAccountUrl = async function(email) {
+window.AccountActions.getFixAccountUrl = async function (email) {
     const store = Alpine.store('global');
 
     try {
@@ -160,7 +160,7 @@ window.AccountActions.getFixAccountUrl = async function(email) {
  * 从磁盘重新加载所有账号配置
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
-window.AccountActions.reloadAccounts = async function() {
+window.AccountActions.reloadAccounts = async function () {
     const store = Alpine.store('global');
 
     try {

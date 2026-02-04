@@ -12,7 +12,10 @@ import {
     ANTIGRAVITY_ENDPOINT_FALLBACKS,
     LOAD_CODE_ASSIST_HEADERS,
     OAUTH_CONFIG,
-    OAUTH_REDIRECT_URI
+    OAUTH_REDIRECT_URI,
+    AUTH_TYPES,
+    getOAuthConfig,
+    getOAuthRedirectUri
 } from '../constants.js';
 import { logger } from '../utils/logger.js';
 import { onboardUser, getDefaultTierId } from '../account-manager/onboarding.js';
@@ -61,18 +64,21 @@ function generatePKCE() {
  * Generate authorization URL for Google OAuth
  * Returns the URL and the PKCE verifier (needed for token exchange)
  *
+ * @param {string} [authType='antigravity'] - Authentication type ('antigravity' or 'gemini-cli')
  * @param {string} [customRedirectUri] - Optional custom redirect URI (e.g. for WebUI)
  * @returns {{url: string, verifier: string, state: string}} Auth URL and PKCE data
  */
-export function getAuthorizationUrl(customRedirectUri = null) {
+export function getAuthorizationUrl(authType = AUTH_TYPES.ANTIGRAVITY, customRedirectUri = null) {
     const { verifier, challenge } = generatePKCE();
     const state = crypto.randomBytes(16).toString('hex');
+    const oauthConfig = getOAuthConfig(authType);
+    const redirectUri = customRedirectUri || getOAuthRedirectUri(authType);
 
     const params = new URLSearchParams({
-        client_id: OAUTH_CONFIG.clientId,
-        redirect_uri: customRedirectUri || OAUTH_REDIRECT_URI,
+        client_id: oauthConfig.clientId,
+        redirect_uri: redirectUri,
         response_type: 'code',
-        scope: OAUTH_CONFIG.scopes.join(' '),
+        scope: oauthConfig.scopes.join(' '),
         access_type: 'offline',
         prompt: 'consent',
         code_challenge: challenge,
@@ -81,7 +87,7 @@ export function getAuthorizationUrl(customRedirectUri = null) {
     });
 
     return {
-        url: `${OAUTH_CONFIG.authUrl}?${params.toString()}`,
+        url: `${oauthConfig.authUrl}?${params.toString()}`,
         verifier,
         state
     };
@@ -280,8 +286,8 @@ export function startCallbackServer(expectedState, timeoutMs = 120000) {
                 const errMsg = err.code === 'EACCES'
                     ? `Permission denied on port ${port}`
                     : err.code === 'EADDRINUSE'
-                    ? `Port ${port} already in use`
-                    : `Failed to bind port ${port}: ${err.message}`;
+                        ? `Port ${port} already in use`
+                        : `Failed to bind port ${port}: ${err.message}`;
                 errors.push(errMsg);
                 logger.warn(`[OAuth] ${errMsg}`);
             }
@@ -350,21 +356,25 @@ Option 4: Exclude port from reservation (run as Administrator)
  *
  * @param {string} code - Authorization code from OAuth callback
  * @param {string} verifier - PKCE code verifier
+ * @param {string} [authType='antigravity'] - Authentication type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{accessToken: string, refreshToken: string, expiresIn: number}>} OAuth tokens
  */
-export async function exchangeCode(code, verifier) {
-    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+export async function exchangeCode(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const oauthConfig = getOAuthConfig(authType);
+    const redirectUri = getOAuthRedirectUri(authType);
+
+    const response = await fetch(oauthConfig.tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_id: oauthConfig.clientId,
+            client_secret: oauthConfig.clientSecret,
             code: code,
             code_verifier: verifier,
             grant_type: 'authorization_code',
-            redirect_uri: OAUTH_REDIRECT_URI
+            redirect_uri: redirectUri
         })
     });
 
@@ -395,20 +405,22 @@ export async function exchangeCode(code, verifier) {
  * Handles composite refresh tokens (refreshToken|projectId|managedProjectId)
  *
  * @param {string} compositeRefresh - OAuth refresh token (may be composite)
+ * @param {string} [authType='antigravity'] - Authentication type ('antigravity' or 'gemini-cli')
  * @returns {Promise<{accessToken: string, expiresIn: number}>} New access token
  */
-export async function refreshAccessToken(compositeRefresh) {
+export async function refreshAccessToken(compositeRefresh, authType = AUTH_TYPES.ANTIGRAVITY) {
     // Parse the composite refresh token to extract the actual OAuth token
     const parts = parseRefreshParts(compositeRefresh);
+    const oauthConfig = getOAuthConfig(authType);
 
-    const response = await fetch(OAUTH_CONFIG.tokenUrl, {
+    const response = await fetch(oauthConfig.tokenUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
-            client_id: OAUTH_CONFIG.clientId,
-            client_secret: OAUTH_CONFIG.clientSecret,
+            client_id: oauthConfig.clientId,
+            client_secret: oauthConfig.clientSecret,
             refresh_token: parts.refreshToken,  // Use the actual OAuth token
             grant_type: 'refresh_token'
         })
@@ -430,10 +442,13 @@ export async function refreshAccessToken(compositeRefresh) {
  * Get user email from access token
  *
  * @param {string} accessToken - OAuth access token
+ * @param {string} [authType='antigravity'] - Authentication type ('antigravity' or 'gemini-cli')
  * @returns {Promise<string>} User's email address
  */
-export async function getUserEmail(accessToken) {
-    const response = await fetch(OAUTH_CONFIG.userInfoUrl, {
+export async function getUserEmail(accessToken, authType = AUTH_TYPES.ANTIGRAVITY) {
+    const oauthConfig = getOAuthConfig(authType);
+
+    const response = await fetch(oauthConfig.userInfoUrl, {
         headers: {
             'Authorization': `Bearer ${accessToken}`
         }
@@ -516,14 +531,15 @@ export async function discoverProjectId(accessToken) {
  *
  * @param {string} code - Authorization code from OAuth callback
  * @param {string} verifier - PKCE code verifier
- * @returns {Promise<{email: string, refreshToken: string, accessToken: string, projectId: string|null}>} Complete account info
+ * @param {string} [authType='antigravity'] - Authentication type ('antigravity' or 'gemini-cli')
+ * @returns {Promise<{email: string, refreshToken: string, accessToken: string, projectId: string|null, authType: string}>} Complete account info
  */
-export async function completeOAuthFlow(code, verifier) {
+export async function completeOAuthFlow(code, verifier, authType = AUTH_TYPES.ANTIGRAVITY) {
     // Exchange code for tokens
-    const tokens = await exchangeCode(code, verifier);
+    const tokens = await exchangeCode(code, verifier, authType);
 
     // Get user email
-    const email = await getUserEmail(tokens.accessToken);
+    const email = await getUserEmail(tokens.accessToken, authType);
 
     // Discover project ID
     const projectId = await discoverProjectId(tokens.accessToken);
@@ -532,7 +548,8 @@ export async function completeOAuthFlow(code, verifier) {
         email,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
-        projectId
+        projectId,
+        authType
     };
 }
 
