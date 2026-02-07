@@ -286,6 +286,8 @@ export const DEFAULT_SERVER_PRESETS = [
             maxConsecutiveFailures: 3,
             extendedCooldownMs: 60000,
             maxCapacityRetries: 5,
+            switchAccountDelayMs: 5000,
+            capacityBackoffTiersMs: [5000, 10000, 20000, 30000, 60000],
             accountSelection: {
                 strategy: 'hybrid',
                 healthScore: {
@@ -293,7 +295,7 @@ export const DEFAULT_SERVER_PRESETS = [
                     successReward: 1,
                     rateLimitPenalty: -10,
                     failurePenalty: -20,
-                    recoveryPerHour: 2,
+                    recoveryPerHour: 10,
                     minUsable: 50,
                     maxScore: 100
                 },
@@ -306,6 +308,12 @@ export const DEFAULT_SERVER_PRESETS = [
                     lowThreshold: 0.10,
                     criticalThreshold: 0.05,
                     staleMs: 300000
+                },
+                weights: {
+                    health: 2,
+                    tokens: 5,
+                    quota: 3,
+                    lru: 0.1
                 }
             }
         }
@@ -326,6 +334,8 @@ export const DEFAULT_SERVER_PRESETS = [
             maxConsecutiveFailures: 2,
             extendedCooldownMs: 30000,
             maxCapacityRetries: 3,
+            switchAccountDelayMs: 3000,
+            capacityBackoffTiersMs: [3000, 6000, 12000, 20000, 40000],
             accountSelection: {
                 strategy: 'hybrid',
                 healthScore: {
@@ -346,6 +356,12 @@ export const DEFAULT_SERVER_PRESETS = [
                     lowThreshold: 0.15,
                     criticalThreshold: 0.05,
                     staleMs: 180000
+                },
+                weights: {
+                    health: 5,
+                    tokens: 2,
+                    quota: 3,
+                    lru: 0.01
                 }
             }
         }
@@ -366,6 +382,8 @@ export const DEFAULT_SERVER_PRESETS = [
             maxConsecutiveFailures: 5,
             extendedCooldownMs: 120000,
             maxCapacityRetries: 8,
+            switchAccountDelayMs: 8000,
+            capacityBackoffTiersMs: [8000, 15000, 30000, 45000, 90000],
             accountSelection: {
                 strategy: 'sticky',
                 healthScore: {
@@ -386,6 +404,12 @@ export const DEFAULT_SERVER_PRESETS = [
                     lowThreshold: 0.20,
                     criticalThreshold: 0.10,
                     staleMs: 300000
+                },
+                weights: {
+                    health: 3,
+                    tokens: 4,
+                    quota: 2,
+                    lru: 0.05
                 }
             }
         }
