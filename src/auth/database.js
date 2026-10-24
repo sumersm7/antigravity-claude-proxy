@@ -11,7 +11,7 @@
  * that cause native module incompatibility.
  */
 
-import { createRequire } from 'module';
+import { createRequire } from 'node:module';
 import { ANTIGRAVITY_DB_PATH } from '../constants.js';
 import { isModuleVersionError, attemptAutoRebuild, clearRequireCache } from '../utils/native-module-helper.js';
 import { logger } from '../utils/logger.js';
